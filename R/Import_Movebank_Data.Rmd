@@ -9,6 +9,7 @@ At this time of the year, it is the dry season and bats are foraging on Balsa fl
 
 Additionally, we will set up a pipeline to extract flight parameters from each individual as well as run an HMM to define foraging and commuting.
 
+# load libaries
 ```{r setup, include=FALSE}
 library(pacman)
 # devtools::install_github("ABoVE-AotM/above")
@@ -16,14 +17,10 @@ p_load(above, move, maptools,
        dplyr, leaflet, lubridate, maps, mapdata, marcher, rgdal, 
        gfcanalysis,snow,patchwork,
        raster,rlist,PBSmapping, 
-       rnaturalearth, rnaturalearthdata, sp, momentuHMM)
+       rnaturalearth, rnaturalearthdata, sp, momentuHMM,
+       tidyverse, magrittr)
 
-<<<<<<< HEAD
-# source("../../movebank_login.R")
-=======
 source("../../../movebank_login.R")
-
->>>>>>> 556f37ee9f5dfe75f73622bbed811d9d7825a24f
 
 proj.ll <- CRS('+proj=longlat +datum=WGS84 +no_defs')
 ```
@@ -40,7 +37,7 @@ xy <- cbind(x,y)
 p <- Polygon(xy)
 ps <- Polygons(list(p),1)
 sps <- SpatialPolygons(list(ps))
-plot(sps)
+# plot(sps)
 proj4string(sps) = CRS("+proj=longlat +datum=WGS84 +no_defs +ellps=WGS84 +towgs84=0,0,0")
 
 aoi <- sps
@@ -70,11 +67,13 @@ load("../../../../Dropbox/MPI/Phyllostomus/Fieldwork/Data/forestcoverBocas.rdata
 ```
 
 
-
+# read movebank data
 ```{r}
-phast <- getMovebankData(study="Greater spear-nosed bat (Phyllostomus hastatus) in Bocas del Toro 2021-2022", login=login, removeDuplicatedTimestamps = TRUE)
-sensors <- getMovebankSensorsAttributes(study="Greater spear-nosed bat (Phyllostomus hastatus) in Bocas del Toro 2021-2022", login=login)
-
+# phast <- getMovebankData(study="Greater spear-nosed bat (Phyllostomus hastatus) in Bocas del Toro 2021-2022", login=login, removeDuplicatedTimestamps = TRUE)
+# sensors <- getMovebankSensorsAttributes(study="Greater spear-nosed bat (Phyllostomus hastatus) in Bocas del Toro 2021-2022", login=login)
+# 
+# save(phast, sensors, file = "../../../../Dropbox/MPI/Phyllostomus/Fieldwork/Data/phastmove.rdata")
+load("../../../../Dropbox/MPI/Phyllostomus/Fieldwork/Data/phastmove.rdata")
 #phast_gps <- getMovebankData(study="Greater spear-nosed bat (Phyllostomus hastatus) in Bocas del Toro 2021-2022", login=login, removeDuplicatedTimestamps = TRUE, sensorID = "GPS")
 ```
 
@@ -106,6 +105,7 @@ ylim <- c(9.3, 9.7)
 ```
 # plot data
 ```{r}
+gfc_data 
 tree <- crop(gfc_data[[1]], extent(c(xlim, ylim)))
 
 tree.df <- data.frame(x=coordinates(tree)[,1], y=coordinates(tree)[,2], fcover=values(tree))
