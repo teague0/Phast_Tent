@@ -11,7 +11,7 @@ p_load(above, move,
        raster,rlist,PBSmapping, 
        rnaturalearth, rnaturalearthdata, sp, momentuHMM)
 
-source("../../movebank_login.R")
+source("../../../movebank_login.R")
 
 
 ```
