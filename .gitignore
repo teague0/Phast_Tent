@@ -5,6 +5,11 @@
 # Session Data files
 .RData
 
+# Raster Data files
+*.tif
+/*.tif
+R/*.tif
+
 # User-specific files
 .Ruserdata
 

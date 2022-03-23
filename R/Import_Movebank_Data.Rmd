@@ -18,7 +18,12 @@ p_load(above, move, maptools,
        raster,rlist,PBSmapping, 
        rnaturalearth, rnaturalearthdata, sp, momentuHMM)
 
+<<<<<<< HEAD
 # source("../../movebank_login.R")
+=======
+source("../../../movebank_login.R")
+
+>>>>>>> 556f37ee9f5dfe75f73622bbed811d9d7825a24f
 
 proj.ll <- CRS('+proj=longlat +datum=WGS84 +no_defs')
 ```
