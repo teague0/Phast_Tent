@@ -1,0 +1,485 @@
+---
+title: "Regularization and behavioral annotation"
+output: html_document
+---
+
+```{r setup}
+library(pacman)
+# devtools::install_github("ABoVE-AotM/above")
+p_load(above, move, maptools, circular,
+       dplyr, leaflet, lubridate, maps, mapdata, marcher, rgdal, 
+       gfcanalysis,snow,patchwork,
+       raster,rlist,PBSmapping,  rgeos, MASS,
+       rnaturalearth, rnaturalearthdata, sp, momentuHMM,
+       tidyverse, magrittr)
+
+source("../../../movebank_login.R")
+
+proj.ll <- CRS('+proj=longlat +datum=WGS84 +no_defs')
+projUTM <- CRS("+proj=utm +zone=17 +ellps=GRS80 +datum=NAD83 +units=m +no_defs")
+```
+
+```{r}
+load("../../../../Dropbox/MPI/Phyllostomus/Fieldwork/Data/results_part1.rdata")
+load("../../../../Dropbox/MPI/Phyllostomus/Fieldwork/Data/phastmove.rdata")
+inf <- read.delim("../../../../Dropbox/MPI/Phyllostomus/Fieldwork/Data/Greater spear-nosed bat (Phyllostomus hastatus) in Bocas del Toro 2021-2022-reference-data.csv", header=T, sep=',', as.is=T)
+```
+
+# what's the schedule for the tags?
+```{r}
+unique(inf$duty.cycle[inf$animal.id %in% unique(move.df$local_identifier)]) 
+#tag_local_identifier 53507135_C
+# trackId X8041B2F
+# local_identifier 8041B2F
+
+# look at what sampling rates are actually present in the data:
+tdiff <- ddply(move.df, 'local_identifier', function(id){
+  ddply(id, 'day', function(d){
+    tdiff <- unlist(lapply(2:nrow(d), function(j){difftime(d$timestamp[j], d$timestamp[j-1], unit='secs')}))
+    return(data.frame(tdiff=tdiff))
+  })
+})
+
+# sadly not as regular as one might hope (in minutes):
+# table(round(tdiff$tdiff/150)*2.5)
+table(round(tdiff$tdiff/120)*2)
+```
+
+The package I’m working with for running HMMs, momentuHMM, integrates some functionality from the crawl package (correlated random walks) that allow it to interpolate trajectories. I haven’t had much luck fitting crawl-models to duck migratory tracks, but there are chances it might work with fruit bats (the crawl library was written with foraging trips of seals in mind, and while fruit bats obviously move very differently, the behaviour does look similar-ish, albeit at a different scale/speed).
+
+If we want to apply HMMs, the first step is to format the tracking data correctly, and then attempt to fit a crawl-model to the data. It’s easier to make it work for a single individual first. Here, I’ll apply the crawl-model to individual 7CCA9E6, for which several days of data are available:
+
+```{r}
+# prepare error structure for crawl-model
+IDlocs <- table(move.df$tag_id)
+df <- move.df[move.df$tag_id %in% names(which(IDlocs>100)),]
+
+error.major <- error.minor <- df$gps_hdop# eobs.horizontal.accuracy.estimate
+error.ellipse <- rep(0, length(error.major))
+err.df <- crawl:::argosDiag2Cov(error.major, error.minor, error.ellipse)
+
+# bind error structure to movement data
+df <- cbind(df, err.df)
+
+# let's say we want the crawl-model to predict a relocation every 120 seconds / 2.5 minutes
+# we need to make a time vector that contains the timestamps we need predictions for 
+# (we could let crawl do the job, but then it would assume we want locations during the daytime as well)
+timestamps <- dlply(df, 'local_identifier', function(id){
+  tmp <- ddply(id, 'day', function(d){
+    min.t <- min(d$timestamp)
+    max.t <- max(d$timestamp)
+    t <- seq(min.t, max.t, 120)
+    return(data.frame(t=t))
+  })
+  return(tmp$t)
+})
+
+# fit initial crawl-model to single individual (using re-projected location coordinates)
+df$ID <- df$local_identifier
+
+tmp <- df[df$local_identifier=='7CCA9E6',]
+
+test.crwl <- crawlWrap(tmp, Time.name='timestamp', coord=c('x', 'y'), predTime=timestamps[['7CCA9E6']],
+                  err.model=list(x=~ln.sd.x-1, y=~ln.sd.y-1, rho=~error.corr), # error model
+                  mov.model=~1, # movement model
+                  theta=c(8,1.5), # starting parameters from a previous run (start here rather than at 0)
+                  fixPar=c(median(err.df$ln.sd.x),median(err.df$ln.sd.y),NA,NA))
+```
+
+```{r}
+test.crwl$crwFits
+```
+
+```{r}
+tmp <- test.crwl$crwPredict
+ggplot(tmp[tmp$locType=='o',]) + geom_point(aes(x=x, y=y, colour=gps_hdop), size=0.7) + 
+  labs(title='Observed') + coord_equal() + scale_colour_viridis_c(name='GPS accuracy [m]') +
+  theme(legend.position='bottom') +
+ggplot(tmp[tmp$locType=='p',]) + geom_point(aes(x=mu.x, y=mu.y, colour=se.mu.x), size=0.7) + 
+  labs(title='Predicted') + coord_equal() + scale_colour_viridis_c(name='Location uncertainty [m]') +
+  theme(legend.position='bottom')
+```
+
+```{r}
+# Comparing predicted & observed x- & y-coordinates
+ggplot(tmp, aes(x=timestamp)) +
+  geom_point(aes(y=x, colour=locType), size=0.7) +
+  geom_point(aes(y=mu.x, colour=locType), size=0.7) + 
+  labs(title='Observed & predicted x-coordinates') +
+  coord_equal() + theme(legend.position='none') +
+ggplot(tmp, aes(x=timestamp)) +
+  geom_point(aes(y=y, colour=locType), size=0.7) +
+  geom_point(aes(y=mu.y, colour=locType), size=0.7) + 
+  labs(title='Observed & predicted y-coordinates') +
+  coord_equal() + theme(legend.position='bottom') +
+plot_layout(ncol=1)
+```
+
+```{r}
+# comparing observed & predicted speed estimates 
+# not instantaneous GPS-speed, but dist/time diff.
+
+p <- tmp[tmp$locType=='p',]
+speed.p <- rbind.fill(lapply(2:nrow(p), function(j){
+  d <- gDistance(SpatialPoints(as.data.frame(p[j,c('mu.x', 'mu.y')], proj4string=proj.eqd)),
+                 SpatialPoints(as.data.frame(p[j-1,c('mu.x', 'mu.y')], proj4string=proj.eqd)))
+  t <- as.numeric(difftime(p$timestamp[j], p$timestamp[j-1], unit='secs'))
+  return(data.frame(type='p', d=d, t=t, v=d/t))
+}))
+
+o <- tmp[tmp$locType=='o',]
+speed.o <- rbind.fill(lapply(2:nrow(o), function(j){
+  d <- gDistance(SpatialPoints(as.data.frame(o[j,c('mu.x', 'mu.y')], proj4string=proj.eqd)),
+                 SpatialPoints(as.data.frame(o[j-1,c('mu.x', 'mu.y')], proj4string=proj.eqd)))
+  t <- as.numeric(difftime(o$timestamp[j], o$timestamp[j-1], unit='secs'))
+  return(data.frame(type='p', d=d, t=t, v=d/t))
+}))
+
+# note that the y-axis is square-root-transformed!
+ggplot(speed.p, aes(x=v)) + geom_histogram(aes(y=..density..), fill='white', colour='black', binwidth=1) + 
+  scale_y_sqrt(breaks=seq(0.1,0.7,0.1)) + 
+  labs(title='Speed from predicted locations', x='ground speed [m/s]') +
+ggplot(speed.o, aes(x=v)) + geom_histogram(aes(y=..density..), fill='white', colour='black', binwidth=1) + 
+  scale_y_sqrt(breaks=seq(0.1,0.7,0.1)) + labs(title='Speed from observed locations', x='ground speed [m/s]') +
+  plot_layout(ncol=1)
+```
+
+It seems that the speed distribution is more skewed towards slow speeds in the predicted locations. This is expected, as the model will mostly interpolate locations when the sampling frequency is 1/30 minutes because individuals are inactive.
+
+From here, we can start analysing the movement data in relation to the different movement behaviours displayed by the individuals. I found a paper that modelled both inward and outbound foraging movements with Northern Fulmars in relation to the positions of the colony and fishing vessels (https://doi.org/10.1111/1365-2656.12830). Maybe we can implement something similar using the foraging locations (identified in part 03) - I’m thinking that distinguishing outbound from inbound commute might help with potential differences in overall commuting speed? I don’t know yet whether this will work completely, though - there might be problems with later supplying alternative foraging locations when simulating trajectories from the model, should we decide to do so.
+
+Either way, to get the starting parameters for a more complex HMM right, I will first explore some simpler 2/3-state models (foraging and/or rest, and commuting flight). I’ll do this by running a multiple-imputation HMM (which tries to accomodate for missing/irregular/uncertain locations) from the package momentuHMM. Theoretically, we can fit this model using whatever data streams we want - step length, ground speed, turning angle, accelerometry - as long as we can describe those data streams sufficiently well with a distribution. For this test model, I’ll use step length and turning angles, and define some starting parameters from looking at the data visually. For step lengths, gamma and weibull distributions tend to fit quite well, whereas turning angles seem to be captured best by wrapped cauchy or von mises distributions. We can test all of these to see which ones work best for the bats. Again, let’s initially make it work with a single individual:
+
+```{r}
+df.7CCA9E6 <- prepData(test.crwl, type='UTM')
+df.7CCA9E6$step <- df.7CCA9E6$step/1000 # convert step length to km
+
+# step lengths
+d.fast <- df.7CCA9E6$step[df.7CCA9E6$step>.5]
+d.fast <- d.fast[!is.na(d.fast)]
+d.slow <- df.7CCA9E6$step[df.7CCA9E6$step<=.5]
+d.slow <- d.slow[!is.na(d.slow)]
+
+d.fast.we <- fitdistr(d.fast, densfun='weibull')
+
+d.fast.ga <- fitdistr(d.fast, densfun='gamma')
+
+d.slow.we <- fitdistr(d.slow, densfun='weibull')
+
+d.slow.ga <- fitdistr(d.slow, densfun='gamma')
+```
+
+```{r}
+ggplot(df.7CCA9E6[df.7CCA9E6$step>.5,], aes(x=step)) + geom_density(fill='white', colour='black') +
+  stat_function(fun=dweibull, colour="red", args=list(shape=d.fast.we$estimate[1], scale=d.fast.we$estimate[2])) +
+  stat_function(fun=dgamma, colour="blue", args=list(shape=d.fast.ga$estimate[1], rate=d.fast.ga$estimate[2])) +
+  labs(title='Comparing fitted Weibull (red) and Gamma distributions (blue) for step length') +
+ggplot(df.7CCA9E6[df.7CCA9E6$step<=.5,], aes(x=step)) + geom_density(fill='white', colour='black') +
+  stat_function(fun=dweibull, colour="red", args=list(shape=d.slow.we$estimate[1], scale=d.slow.we$estimate[2])) +
+  stat_function(fun=dgamma, colour="blue", args=list(shape=d.slow.ga$estimate[1], rate=d.slow.ga$estimate[2])) +
+  ylim(0,20) + plot_layout(ncol=1)
+```
+
+```{r}
+# turning angles
+a.fast <- df.7CCA9E6$angle[df.7CCA9E6$step>.5]
+a.slow <- df.7CCA9E6$angle[df.7CCA9E6$step<=.5]
+
+a.fast.vm <- mle.vonmises(a.fast)
+a.fast.wc <- mle.wrappedcauchy(a.fast)
+a.slow.vm <- mle.vonmises(a.slow)
+a.slow.wc <- mle.wrappedcauchy(a.slow)
+
+ggplot(df.7CCA9E6[df.7CCA9E6$step>.5,], aes(x=angle)) + geom_density(fill='white', colour='black') + xlim(-pi,pi) +
+  stat_function(fun=dvonmises, colour="red", args=list(mu=as.numeric(a.fast.vm$mu), kappa=a.fast.vm$kappa)) +
+  stat_function(fun=dwrappedcauchy, colour="blue", args=list(mu=as.numeric(a.fast.wc$mu), rho=a.fast.wc$rho)) +
+  labs(title='Comparing fitted von mises (red) and Cauchy distributions (blue) for turning angle') +
+ggplot(df.7CCA9E6[df.7CCA9E6$step<=.5,], aes(x=angle)) + geom_density(fill='white', colour='black') + xlim(-pi,pi) +
+  stat_function(fun=dvonmises, colour="red", args=list(mu=as.numeric(a.slow.vm$mu), kappa=a.slow.vm$kappa)) +
+  stat_function(fun=dwrappedcauchy, colour="blue", args=list(mu=as.numeric(a.slow.wc$mu), rho=a.slow.wc$rho)) +
+  plot_layout(ncol=1)
+
+
+```
+
+For step length, I wouldn’t be able to tell visually which of the two candidates fits better. That might also have to do with there being two bumps indicating we should definitely implement a 3-state-model as well! For turning angle, there is barely a difference for the slow movement between the two, but for higher speeds the wrapped Cuachy distribution (blue line) seems to do much better than the von Mises distribution. On this ground, I will ignore the von Mises distribution from here onward.
+
+If we want to continue using the gamma distribution for step lengths, we do need a little conversion function that translates our starting estimates (using shape & scale) to mean & variance, which is what momentuHMM uses:
+```{r}
+## conversion functions for gamma distribution
+convert.gamma <- function(mu=NULL, sigma=NULL, kappa=NULL, theta=NULL, beta=NULL, type=c('mu2kappa', 'kappa2mu')){
+  if(type=='mu2kappa'){
+    if(!all(!is.null(c(mu,sigma)))){
+      stop('This conversion requires both mu and sigma to work!')
+    }
+    kappa <- mu^2 / sigma^2
+    theta <- sigma^2 / mu
+    return(c(kappa=kappa, theta=theta, beta=1/theta))
+  }
+  if(type=='kappa2mu'){
+    if(!all(!is.null(c(theta, kappa))) | !all(!is.null(c(kappa, beta)))){
+      stop('This conversion requires either kappa and theta, or kappa and beta to work!')
+    }
+  }
+  if(all(!is.null(c(theta, kappa)))){
+    mu <- kappa * theta
+    sigma <- sqrt(mu^2 / kappa)
+  }else{
+    theta <- 1/beta
+    mu <- kappa * theta
+    sigma <- sqrt(mu^2 / kappa)
+  }
+  return(c(mu=mu, sigma=sigma))
+}
+```
+
+# HMM
+## 2 state
+```{r}
+d.fast.ga <- convert.gamma(kappa=as.numeric(d.fast.ga$estimate[1]), theta=as.numeric(1/d.fast.ga$estimate[2]), type='kappa2mu')
+d.slow.ga <- convert.gamma(kappa=as.numeric(d.slow.ga$estimate[1]), theta=as.numeric(1/d.slow.ga$estimate[2]), type='kappa2mu')
+
+# starting parameters
+start.step.ga <- c(d.slow.ga['mu'], d.fast.ga['mu'],       # mean
+                   d.slow.ga['sigma'], d.fast.ga['sigma'], # variance
+                   0.1, 0)                                 # zero-mass (zero-inflation, might not be necessary)
+
+start.step.wb <- c(d.slow.we$estimate[1], d.slow.we$estimate[2], # shape
+                   d.slow.we$estimate[2], d.slow.we$estimate[2], # scale
+                   0.1, 0)                                       # zero-mass (zero-inflation, might not be necessary)
+
+# starting parameters for mean turning angle are close to pi (slow) and 0 (fast), so I'll add these instead
+start.turn.wc <- c(pi, 0,                        # mean
+                   a.slow.wc$rho, a.fast.wc$rho) # concentration
+  
+
+# starting distribution for the states
+d0 <- c(nrow(df.7CCA9E6[df.7CCA9E6$step<=.5,])/nrow(df.7CCA9E6), nrow(df.7CCA9E6[df.7CCA9E6$step>.5,])/nrow(df.7CCA9E6))
+
+# assign day of tracking to predicted locations (so we can run the model per day)
+po <- spTransform(SpatialPoints(as.data.frame(df.7CCA9E6)[,c('x', 'y')], proj4string=projUTM), CRSobj=proj.ll)
+df.7CCA9E6$solar.time <- unlist(lapply(1:nrow(df.7CCA9E6), function(j){
+  noon <- solarnoon(po[j,], df.7CCA9E6$timestamp[j], POSIXct.out=TRUE)$time
+  tod <- as.numeric(difftime(df.7CCA9E6$timestamp[j], noon, units='hours'))
+  return(tod)
+}))
+df.7CCA9E6$solar.time <- (df.7CCA9E6$solar.time+24)%%24
+df.7CCA9E6$day <- c(0, cumsum(diff(df.7CCA9E6$solar.time)<0)) + 1
+
+
+```
+### gamma
+```{r}
+hmm.ga <- fitHMM(df.7CCA9E6, nbStates=2, stateNames=c('AR', 'transit'),
+                 dist=list(step='gamma', angle='wrpcauchy'),
+                 Par0=list(step=start.step.ga[1:4], angle=start.turn.wc),
+                 estAngleMean=list(angle=T), delta0=d0)
+hmm.ga
+plot(hmm.ga, sepStates=T, plotTracks=F, plotCI=T, ask = FALSE)
+```
+### weibull
+```{r}
+hmm.wb <- fitHMM(df.7CCA9E6, nbStates=2, stateNames=c('AR', 'transit'),
+                 dist=list(step='weibull', angle='wrpcauchy'),
+                 Par0=list(step=start.step.wb[1:4], angle=start.turn.wc),
+                 estAngleMean=list(angle=T), delta0=d0)
+hmm.wb
+plot(hmm.wb, sepStates=T, plotTracks=F, plotCI=T, ask = FALSE)
+```
+
+```{r}
+df.7CCA9E6$state.wb <- viterbi(hmm.wb)
+df.7CCA9E6$state.ga <- viterbi(hmm.ga)
+
+# while the models look slightly different, all but 15 locations were assigned identical states by the two models
+summary(df.7CCA9E6$state.wb == df.7CCA9E6$state.ga)
+```
+### AIC
+```{r}
+AIC(hmm.ga, hmm.wb)
+```
+## 3 state HMM
+```{r}
+# starting parameters
+start.step.ga <- c(0.02, 0.95, 1.5,  # mean
+                   0.02, 0.75, 0.75) # variance
+
+start.step.wb <- c(0.85, 1.55, 2.5, # shape
+                   0.02, 1.05, 1.5)  # scale
+
+# starting parameters for mean turning angle are close to pi (slow) and 0 (fast), so I'll add these instead
+start.turn.wc <- c(0, 0, 0,       # mean
+                   0.8, 0.8, 0.9) # concentration
+  
+d0 <- c(0.6, 0.2, 0.1)
+```
+
+### gamma
+```{r}
+hmm.ga <- fitHMM(df.7CCA9E6, nbStates=3, stateNames=c('AR', 'short.transit', 'long.transit'),
+                 dist=list(step='gamma', angle='wrpcauchy'),
+                 Par0=list(step=start.step.ga, angle=start.turn.wc),
+                 formula=~cosinor(solar.time, 24),
+                 estAngleMean=list(angle=T), delta0=d0)
+hmm.ga
+plot(hmm.ga, sepStates=T, plotTracks=F, ask = FALSE)
+```
+
+### weibull
+```{r}
+hmm.wb <- fitHMM(df.7CCA9E6, nbStates=3, stateNames=c('AR', 'short.transit', 'long.transit'),
+                 dist=list(step='weibull', angle='wrpcauchy'),
+                 Par0=list(step=start.step.wb, angle=start.turn.wc),
+                 formula=~cosinor(solar.time, 24),
+                 estAngleMean=list(angle=T), delta0=d0)
+hmm.wb
+plot(hmm.wb, sepStates=T, plotTracks=F, ask=FALSE)
+```
+### AIC
+```{r}
+AIC(hmm.ga, hmm.wb)
+```
+```{r}
+plotStationary(hmm.ga, plotCI = TRUE)
+plotStationary(hmm.wb, plotCI = TRUE)
+```
+
+# 4 state HMM
+```{r}
+# starting parameters
+start.step.ga <- c(0.02, 0.2, 0.95, 1.5,  # mean
+                   0.02, 0.25, 0.75, 0.75) # variance
+
+start.step.wb <- c(0.85, 1.2, 1.55, 2.5, # shape
+                   0.02, 0.2, 1.05, 1.5)  # scale
+
+# starting parameters for mean turning angle are close to pi (slow) and 0 (fast), so I'll add these instead
+start.turn.wc <- c(0, 0, 0, 0,       # mean
+                   0.3, 0.5, 0.7, 0.9) # concentration
+  
+d0 <- c(0.5, 0.3, 0.1, 0.1)
+```
+
+### gamma
+```{r}
+hmm.ga <- fitHMM(df.7CCA9E6, nbStates=4, 
+                 dist=list(step='gamma', angle='wrpcauchy'),
+                 Par0=list(step=start.step.ga, angle=start.turn.wc),
+                 formula=~cosinor(solar.time, 24),
+                 estAngleMean=list(angle=T), delta0=d0)
+hmm.ga
+plot(hmm.ga, sepStates=T, plotTracks=F, ask=FALSE)
+```
+### weibull
+#### doesnt fit
+```{r}
+# hmm.wb <- fitHMM(df.7CCA9E6, nbStates=4, 
+#                  dist=list(step='weibull', angle='wrpcauchy'),
+#                  Par0=list(step=start.step.wb, angle=start.turn.wc),
+#                  formula=~cosinor(solar.time, 24),
+#                  estAngleMean=list(angle=T), delta0=d0)
+# hmm.wb
+# plot(hmm.wb, sepStates=T, plotTracks=F, ask=FALSE)
+```
+### AIC
+```{r}
+AIC(hmm.ga, hmm.wb)
+```
+
+# Fitting models to the full dataset
+
+Time to start working on the full dataset and find a good set of starting parameters for all individuals. Given that the weibull distribution for step length seems to consistently perform better than gamma, I’ll only use weibull from now on.
+```{r}
+
+crwl.all <- crawlWrap(df,
+                      Time.name='timestamp', coord=c('x', 'y'), predTime=timestamps,
+                      err.model=list(x=~ln.sd.x-1, y=~ln.sd.y-1, rho=~error.corr), # error model
+                      mov.model=~1, # movement model
+                      theta=c(8,1.5), # starting parameters from a previous run (start here rather than at 0)
+                      fixPar=c(median(err.df$ln.sd.x),median(err.df$ln.sd.y),NA,NA))
+```
+
+```{r}
+po <- spTransform(SpatialPoints(as.data.frame(crwl.all$crwPredict)[,c('mu.x', 'mu.y')], proj4string=projUTM), CRSobj=proj.ll)
+crwl.all$crwPredict$solar.time <- unlist(lapply(1:nrow(crwl.all$crwPredict), function(j){
+  noon <- solarnoon(po[j,], as.data.frame(crwl.all$crwPredict)$timestamp[j], POSIXct.out=TRUE)$time
+  tod <- as.numeric(difftime(as.data.frame(crwl.all$crwPredict)$timestamp[j], noon, units='hours'))
+  return(tod)
+}))
+# shift solar time to be all-positive, from noon to noon
+crwl.all$crwPredict$solar.time <- (crwl.all$crwPredict$solar.time+24)%%24
+
+crwl.all$crwPredict$day <- as.vector(unlist(dlply(as.data.frame(crwl.all$crwPredict), 'ID', function(id){
+  c(0, cumsum(diff(id$solar.time)<0)) + 1
+})))
+
+# compute solar elevation
+crwl.all$crwPredict$solar.pos <- unlist(lapply(1:nrow(crwl.all$crwPredict), function(j){
+  pos <- solarpos(po[j,], crwl.all$crwPredict$timestamp[j])
+  return(pos[,2])
+}))
+
+crwl.all$crwPredict$ID <- paste(crwl.all$crwPredict$ID, crwl.all$crwPredict$day, sep='-')
+
+crwl.all$crwPredict
+
+hmm.df <- prepData(crwl.all, type='UTM')
+hmm.df$speed <- hmm.df$step/120
+hmm.df$step <- sqrt(hmm.df$step) # square-root transformation for step length
+hist(hmm.df$step)
+```
+
+```{r}
+# starting parameters
+start.step.wb <- c(1, 1.4, 4, # shape
+                   4, 8, 36)  # scale
+
+start.turn.wc <- c(0, 0, 0,       # mean
+                   0.8, 0.8, 0.9) # concentration
+
+start.speed.wb <- c(1.2, 1.2, 2.5, # shape
+                    0.05, 0.5, 9) # scale
+                    
+# let's take a look at an empirical CDF to decide on estimates for the initial distribution of states:
+plot(ecdf(df$ground.speed), main='ECDF of ground speed (original data)')
+```
+
+```{r}
+plot(ecdf(hmm.df$step), main='ECDF of step length (interpolated data)')
+abline(h=c(0.85, 0.9, 1.0), col='red')
+```
+
+```{r}
+d0 <- c(0.85, 0.05, 0.1)
+
+# only individuals with at least 6 hours of data (~50% of a night's locations):
+min.n <- (3600/120)*6
+check <- ddply(hmm.df, 'ID', nrow)
+keep <- check$ID[check$V1>min.n] # 98 out of 103 individual-nights
+hmm.df <- hmm.df[hmm.df$ID %in% keep,]
+
+hmm.all <- fitHMM(hmm.df, nbStates=3, #stateNames=c('AR', 'short.transit', 'long.transit'),
+                  dist=list(step='weibull', angle='wrpcauchy'),
+                  Par0=list(step=start.step.wb, angle=start.turn.wc),
+                  estAngleMean=list(angle=T),
+                  formula=~cosinor(solar.time, 24),
+                  delta0=d0)
+
+hmm.all
+plot(hmm.all, sepStates=T, plotTracks=F, ask = FALSE)
+```
+
+```{r}
+plotStationary(hmm.all, plotCI=T)
+```
+
+```{r}
+hmm.df$state <- viterbi(hmm.all)
+
+ggplot(hmm.df[grep('7CCA9E6', hmm.df$ID),], 
+       aes(x=abs(solar.time), y=(step^2)/1000)) +
+  geom_path() + geom_point(aes(colour=factor(state))) + 
+  scale_colour_manual(values=wesanderson:::wes_palette('Darjeeling1', 4)) +
+  facet_wrap(~ID) + labs(y='Step length [km]')
+```
+

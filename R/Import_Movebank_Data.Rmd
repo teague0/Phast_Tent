@@ -18,7 +18,7 @@ p_load(above, move, maptools,
        gfcanalysis,snow,patchwork,
        raster,rlist,PBSmapping, 
        rnaturalearth, rnaturalearthdata, sp, momentuHMM,
-       tidyverse, magrittr)
+       tidyverse, magrittr, osmdata)
 
 source("../../../movebank_login.R")
 
@@ -82,6 +82,14 @@ load("../../../../Dropbox/MPI/Phyllostomus/Fieldwork/Data/phastmove.rdata")
 phast <- phast[phast$location_long > -90,]
 plot(phast)
 ```
+## add UTM
+```{r}
+projUTM <- "+proj=utm +zone=17 +ellps=GRS80 +datum=NAD83 +units=m +no_defs"
+BocasProj <- spTransform(phast, CRSobj=projUTM)
+
+phast$x <- BocasProj$location_long
+phast$y <- BocasProj$location_lat
+```
 
 
 ```{r}
@@ -93,7 +101,7 @@ move.df <- as.data.frame(phast)
 # number of individuals
 ```{r}
 length(unique(move.df$tag_id))
-sort(table(move.df$tag_id))
+sort(table(move.df$local_identifier))
 ```
 
 # spatial extent of the study
@@ -103,7 +111,7 @@ range(move.df$location_lat)
 xlim <- c(-83, -82.2)
 ylim <- c(9.3, 9.7)
 ```
-# plot data
+# plot data with tree cover
 ```{r}
 gfc_data 
 tree <- crop(gfc_data[[1]], extent(c(xlim, ylim)))
@@ -118,22 +126,23 @@ ggplot(move.df, aes(x=location_long, y=location_lat)) +
   theme(legend.position='bottom') + coord_equal() +
   labs(x='Longitude', y='Latitude')
 ```
-
+# clean up excess rasters
 ```{r}
 rm(tree.df, gfc_data, gfc_stack,tgfc); gc()
 ```
 
+# plot speed
 ```{r}
 ggplot(move.df, aes(x=ground_speed)) +
   geom_histogram(fill='black', colour='black', binwidth=2)+xlim(c(-5,60))
 
 # move.df$speed <- phast %>% speed %>% unlist
-plot(speed(phast[[1]]))
+plot(move::speed(phast[[1]]))
 phast %>% speed %>% unlist %>% hist(breaks = 100)
 
 phast %>% distance %>% unlist %>% hist(breaks = 50000, xlim = c(0,5000))
 ```
-
+# compare forest cover use between speeds
 ```{r}
 p <- SpatialPoints(move.df[,c('location_long', 'location_lat')], proj4string=CRS('+proj=longlat +datum=WGS84'))
 
@@ -171,8 +180,9 @@ ggplot(move.df, aes(x=solar.pos)) +
   geom_vline(data=twilight, aes(xintercept=solar.pos, colour=name), size=1.5) +
   scale_colour_viridis_d(name='', direction=-1)
 ```
-```{r}
+
 # no sampling during daytime
+```{r}
 p1 <- ggplot(move.df, aes(x=solar.time)) + geom_histogram(fill='white', colour='black', binwidth=1) + 
   scale_x_continuous(breaks=seq(0,23,2), limits=c(0,23)) +
   theme(axis.text.x=element_blank(), axis.title.x=element_blank(), axis.ticks.x=element_blank())
@@ -188,6 +198,100 @@ p3 <- ggplot(move.df, aes(x=solar.time, y=ground_speed, colour=fcover)) +
 
 p1 + plot_spacer() + p3 + p2 + plot_layout(ncol=2, widths=c(0.8, 0.2), heights=c(0.3, 0.7))
 ```
+
+# when do bats fly out from the roost?
+```{r}
+move.df <- ddply(move.df, 'tag_id', function(tmp){
+  tmp$day <- c(0, cumsum(diff(tmp$solar.time)<0)) + 1
+  tmp <- ddply(tmp, 'day', function(x){
+    loc <- c('location_long', 'location_lat')
+    x$d2start <- distGeo(x[1,loc], x[,loc])
+    return(x)
+  })
+  return(tmp)
+})
+
+# individuals were tracked up to 14 days
+# most days display the nice sequence of outbound movement, a stationary phase, and inward movement back to the colony
+# there is quite some variation though, and individuals don't always return to the colony while the tags are active
+ggplot(move.df, aes(x=solar.time, y=d2start/1000)) +
+  geom_path(aes(colour=factor(day))) + scale_colour_viridis_d() +
+  facet_wrap(~tag_id, scale='free_y')
+```
+Additionally, we can see when individuals leave/return to the day roost using a spatial overlay with the boundaries of the bat forest (and the national park as well). I found that openstreetmap has an existing feature for the Kasanka bat forest that looks roughly like the outline presented in the Byng et al. (2010) paper that Roland sent around. If you have anything better, that can easily replaced, but for the point of making progress I’ll use the osm data here. I’ll also make a custom equidistant projection that’s centered on the centroid of the day roost (i.e. distances to the day roost are accurate) because the function expects that locations are in some form of metric projection, rather than longlat.
+
+# get shape file of the island
+## figure out how to separate polygons
+```{r}
+la_gruta <- data.frame(y= 9.395782122798584, x = -82.27111745181531)
+
+panama <- ne_countries(scale = 10, country = "panama", returnclass = "sf")
+plot(panama)
+ggplot(panama)+geom_sf(fill = "white")+
+  coord_sf(xlim = c(-83, -82), ylim = c(9, 9.5))+
+  geom_point(data = la_gruta, aes(x,y), col = 2)
+  
+panama %>% str
+
+panama <- ne_states(country = "panama", returnclass = "sf")
+bocas <- filter(panama, name == "Bocas del Toro")
+ggplot(bocas)+geom_sf(fill = "white")+
+  geom_point(data = la_gruta, aes(x,y), col = 2)
+islands <- st_cast(bocas, "POLYGON")
+islands[1] %>% str
+islands$name <- 1:4
+colon <- filter(islands, name == 3)
+plot(colon)
+
+# first, let's get hold of the park boundaries
+isla_colon <- opq('Isla Colón, Panama') %>%
+  add_osm_feature(key = 'natural', value = 'woods') %>% 
+  osmdata_sp()
+isla_colon
+#<- isla_colon$osm_polygons
+plot(isla_colon$osm_polygons)
+
+
+available_features()
+```
+
+```{r}
+isla_colon <- isla_colon$osm_multipolygons
+
+# download polygon data for the bat forest
+forest <- opq(bbox=as.vector(bbox(isla_colon))) %>%
+    add_osm_feature(key='name', value='Forest', value_exact=F) %>%
+    osmdata_sp()  
+forest <- forest$osm_multipolygons
+
+plot(isla_colon)
+plot(forest, add=T, col='forestgreen')
+```
+
+
+The regularisation is required as, while the tags were programmed to sample locations regularly, there are inconsistencies in the sampling scheme. This is not necessarily an issue, but could cause problems for the second-stage model to annotate behaviour and derive empirical distributions for the different modes of movement. The sampling inconsistencies in this data set are (apart from the obvious gaps during the GPS sleep time) relatively minor, which is why I think we can attempt the regularisation for each individual-day trajectory by fitting continuous-time correlated random walk models using the crawl package.
+
+Following regularisation, I will fit Hidden Markov Models (using the momentuHMM package) to identify different modes of movement behaviour from the trajectories (I’m expecting to see resting/area-restricted movement, slow, undirected, and fast, directed movement to show up here). We can also include environmental and other covariates to the model, such as time of day, or theoretically forest cover. The resulting model will provide us with a behavioural annotation of the trajectories as well with ML estimates of the probability distribution parameters we choose to describe the movement (e.g. step length and turning angle). We should also be able to simulate new trajectories from this model.
+
+The second step of the initial analyses will be to identify foraging sites. My plan here is to make use of the revisitation analyses provided by the recurse package, which calculates revisitations to animal relocations along a single or multiple trajectories (or even user-specified locations/polygons - such as the day roost). My thinking here is that applying the analysis to individual trajectories (or just the stationary relocations, identified using the Hidden Markov Model) should highlight sites where individuals spent considerable time. We’ll have to make the assumption that these sites were used by the individuals for foraging.
+
+```{r}
+save(move.df, phast, tree, proj.ll, file = "../../../../Dropbox/MPI/Phyllostomus/Fieldwork/Data/results_part1.rdata")
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 # acc data is strange for vesper bats
