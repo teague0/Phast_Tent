@@ -1,0 +1,102 @@
+---
+title: "Import Movebank"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library(pacman)
+# devtools::install_github("ABoVE-AotM/above")
+p_load(above, move,
+       dplyr, leaflet, lubridate, maps, mapdata, marcher, rgdal, 
+       raster,rlist,PBSmapping, 
+       rnaturalearth, rnaturalearthdata, sp, momentuHMM)
+
+source("../../movebank_login.R")
+
+
+```
+
+
+
+
+```{r}
+phast <- getMovebankData(study="Greater spear-nosed bat (Phyllostomus hastatus) in Bocas del Toro 2021-2022", login=login, removeDuplicatedTimestamps = TRUE)
+sensors <- getMovebankSensorsAttributes(study="Greater spear-nosed bat (Phyllostomus hastatus) in Bocas del Toro 2021-2022", login=login)
+
+phast_gps <- getMovebankData(study="Greater spear-nosed bat (Phyllostomus hastatus) in Bocas del Toro 2021-2022", login=login, removeDuplicatedTimestamps = TRUE, sensorID = "GPS")
+
+plot(phast_gps)
+
+summary(phast)
+sensors
+namesIndiv(phast)
+```
+
+# acc data is strange for vesper bats
+```{r}
+phast$acceleration_raw_x %>% plot
+acc_idx <- which(!is.na(phast$acceleration_raw_x))
+phast[acc_idx,] %>% plot
+summary(phast[acc_idx,])
+```
+
+
+```{r}
+layout(c(1,2,3))
+plot(phast$acceleration_raw_x[acc_idx], type = "l")
+plot(phast$acceleration_raw_y[acc_idx], type = "l")
+plot(phast$acceleration_raw_z[acc_idx], type = "l")
+```
+
+```{r}
+plot(speed(phast[[1]]))
+phast %>% speed %>% unlist %>% hist(breaks = 100)
+
+phast %>% distance %>% unlist %>% hist(breaks = 50000, xlim = c(0,5000))
+
+
+```
+
+
+
+```{r}
+p_sum <- data.frame()
+j = 1
+for(j in 1:length(unique(phast$tag_id))){
+  indiv <- phast[[j]]
+  plot(indiv)
+  scan_track(x = indiv$location_long, y = indiv$location_lat, time = indiv$timestamp, 
+             cex = indiv$ground_speed*2/max(indiv$ground_speed))  
+  
+  # identify number of foraging days
+  dates <- indiv$timestamp %>% ymd_hms %>% date %>% unique 
+  dates
+  
+  # departure, return, duration of flights
+  ind_sum <- data.frame(tag_id = indiv$tag_id[1], date = dates, 
+                        start = ymd_hms("2000-01-01 00:00:00"), 
+                        end = ymd_hms("2000-01-01 00:00:00"))
+
+  for(i in 1:length(dates)){
+    d <- indiv[date(indiv$timestamp) == dates[i],]
+    plot(d)
+    ind_sum$start[i] <- d$timestamp[1]
+    ind_sum$end[i] <- d$timestamp[nrow(d)]
+    ind_sum$distance[i] <- sum(distance(d))
+    
+    ind_sum$max_speed[i] <- max(speed(d))
+  }
+  p_sum <- rbind(p_sum, ind_sum)
+}
+
+```
+
+
+# identify foraging locations
+
+## HMM
+```{r}
+
+```
+
+
