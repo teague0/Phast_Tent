@@ -3,19 +3,66 @@ title: "Import Movebank"
 output: html_document
 ---
 
+Here is my initial exploration of the Phyllostomus hastatus tracking data from 2022 in Bocas del Toro Panama.
+
+At this time of the year, it is the dry season and bats are foraging on Balsa flowers. We will see if its possible to extract better variables to look at possible foraging trees but for now we can see if bats simply choose to go to areas with high forest cover compared with secondary forests or agricultural land.
+
+Additionally, we will set up a pipeline to extract flight parameters from each individual as well as run an HMM to define foraging and commuting.
+
 ```{r setup, include=FALSE}
 library(pacman)
 # devtools::install_github("ABoVE-AotM/above")
-p_load(above, move,
+p_load(above, move, maptools,
        dplyr, leaflet, lubridate, maps, mapdata, marcher, rgdal, 
+       gfcanalysis,snow,patchwork,
        raster,rlist,PBSmapping, 
        rnaturalearth, rnaturalearthdata, sp, momentuHMM)
 
-source("../../movebank_login.R")
+# source("../../movebank_login.R")
 
-
+proj.ll <- CRS('+proj=longlat +datum=WGS84 +no_defs')
 ```
 
+```{r}
+# fractional tree cover
+data_folder <- '../../../../Dropbox/MPI/Phyllostomus/Fieldwork/Data'
+
+# aoi <- readOGR(system.file('extdata', package='gfcanalysis'), 'ZOI_NAK_2012')
+
+x <- c(-82.59858974938628,-82.03210720544097, -82.03210720544097,-82.59858974938628)
+y <- c(9.125631468384787,9.125631468384787,9.510498999474096,9.510498999474096)
+xy <- cbind(x,y)
+p <- Polygon(xy)
+ps <- Polygons(list(p),1)
+sps <- SpatialPolygons(list(ps))
+plot(sps)
+proj4string(sps) = CRS("+proj=longlat +datum=WGS84 +no_defs +ellps=WGS84 +towgs84=0,0,0")
+
+aoi <- sps
+
+# # Calculate the google server URLs for the tiles needed to cover the AOI
+# tiles <- calc_gfc_tiles(aoi)
+# 
+# # Check to see if these tiles are already present locally, and download them if 
+# # they are not.
+# download_tiles(tiles, data_folder, )
+# 
+# # Extract the GFC data for this AOI from the downloaded GFC tiles, mosaicing 
+# # multiple tiles as necessary (if needed to cover the AOI), and saving  the 
+# # output data to a GeoTIFF (can also save in ENVI format, Erdas format, etc.).
+# gfc_data <- extract_gfc(aoi, data_folder, filename='gfc_Bocas_extract.tif', overwrite = TRUE)
+# 
+# plot(gfc_data)
+# 
+# tgfc <- threshold_gfc(gfc_data)
+# 
+# gfc_stack <- annual_stack(tgfc)
+# 
+# plot(gfc_stack[[16]])
+# 
+# save(gfc_data, gfc_stack, tgfc, file = "../../../../Dropbox/MPI/Phyllostomus/Fieldwork/Data/forestcoverBocas.rdata")
+load("../../../../Dropbox/MPI/Phyllostomus/Fieldwork/Data/forestcoverBocas.rdata")
+```
 
 
 
@@ -23,14 +70,120 @@ source("../../movebank_login.R")
 phast <- getMovebankData(study="Greater spear-nosed bat (Phyllostomus hastatus) in Bocas del Toro 2021-2022", login=login, removeDuplicatedTimestamps = TRUE)
 sensors <- getMovebankSensorsAttributes(study="Greater spear-nosed bat (Phyllostomus hastatus) in Bocas del Toro 2021-2022", login=login)
 
-phast_gps <- getMovebankData(study="Greater spear-nosed bat (Phyllostomus hastatus) in Bocas del Toro 2021-2022", login=login, removeDuplicatedTimestamps = TRUE, sensorID = "GPS")
+#phast_gps <- getMovebankData(study="Greater spear-nosed bat (Phyllostomus hastatus) in Bocas del Toro 2021-2022", login=login, removeDuplicatedTimestamps = TRUE, sensorID = "GPS")
+```
 
-plot(phast_gps)
+# remove outlier
+```{r}
+phast <- phast[phast$location_long > -90,]
+plot(phast)
+```
 
+
+```{r}
 summary(phast)
 sensors
 namesIndiv(phast)
+move.df <- as.data.frame(phast)
 ```
+# number of individuals
+```{r}
+length(unique(move.df$tag_id))
+sort(table(move.df$tag_id))
+```
+
+# spatial extent of the study
+```{r}
+range(move.df$location_long)
+range(move.df$location_lat)
+xlim <- c(-83, -82.2)
+ylim <- c(9.3, 9.7)
+```
+# plot data
+```{r}
+tree <- crop(gfc_data[[1]], extent(c(xlim, ylim)))
+
+tree.df <- data.frame(x=coordinates(tree)[,1], y=coordinates(tree)[,2], fcover=values(tree))
+
+ggplot(move.df, aes(x=location_long, y=location_lat)) +
+  geom_raster(data=tree.df, aes(x=x, y=y, fill=fcover)) +
+  scale_fill_viridis_c(name='Fractional tree cover', limits=c(0,100), option='E', alpha=0.7) +
+  geom_point(aes(colour=factor(tag_id)), size=0.5, show.legend=F)+ 
+  scale_colour_viridis_d(name='Individual', option='A') +
+  theme(legend.position='bottom') + coord_equal() +
+  labs(x='Longitude', y='Latitude')
+```
+
+```{r}
+rm(tree.df, gfc_data, gfc_stack,tgfc); gc()
+```
+
+```{r}
+ggplot(move.df, aes(x=ground_speed)) +
+  geom_histogram(fill='black', colour='black', binwidth=2)+xlim(c(-5,60))
+
+# move.df$speed <- phast %>% speed %>% unlist
+plot(speed(phast[[1]]))
+phast %>% speed %>% unlist %>% hist(breaks = 100)
+
+phast %>% distance %>% unlist %>% hist(breaks = 50000, xlim = c(0,5000))
+```
+
+```{r}
+p <- SpatialPoints(move.df[,c('location_long', 'location_lat')], proj4string=CRS('+proj=longlat +datum=WGS84'))
+
+move.df$fcover <- extract(tree, p) # using nearest-neighbour method
+
+ggplot(move.df, aes(x=fcover)) +
+  geom_histogram(fill='white', colour='black', binwidth=5) +
+  facet_wrap(~factor(ground_speed>2, labels=c('Ground speed < 2m/s', 'Ground speed > 2m/s')), ncol=1)
+```
+# Adding sun angle and solar time
+```{r}
+# compute time relative to solar noon for each location
+move.df$solar.time <- unlist(lapply(1:nrow(move.df), function(j){
+  noon <- solarnoon(p[j,], move.df$timestamp[j], POSIXct.out=TRUE)$time
+  tod <- as.numeric(difftime(move.df$timestamp[j], noon, units='hours'))
+  return(tod)
+}))
+
+# shift solar time to be all-positive, from noon to noon
+move.df$solar.time <- (move.df$solar.time+24)%%24
+
+# compute solar elevation
+move.df$solar.pos <- unlist(lapply(1:nrow(move.df), function(j){
+  pos <- solarpos(p[j,], move.df$timestamp[j])
+  return(pos[,2])
+}))
+
+
+twilight <- data.frame('name'= c('Dawn/Dusk', 'Civil Twilight', 'Nautical Twilight', 'Astronomical Twilight'),
+                       'solar.pos'=c(0, -6, -12, -18), stringsAsFactors=F)
+twilight$name <- factor(twilight$name, levels=c('Dawn/Dusk', 'Civil Twilight', 'Nautical Twilight', 'Astronomical Twilight'))
+
+ggplot(move.df, aes(x=solar.pos)) + 
+  geom_histogram(fill='white', colour='black', binwidth=3) +
+  geom_vline(data=twilight, aes(xintercept=solar.pos, colour=name), size=1.5) +
+  scale_colour_viridis_d(name='', direction=-1)
+```
+```{r}
+# no sampling during daytime
+p1 <- ggplot(move.df, aes(x=solar.time)) + geom_histogram(fill='white', colour='black', binwidth=1) + 
+  scale_x_continuous(breaks=seq(0,23,2), limits=c(0,23)) +
+  theme(axis.text.x=element_blank(), axis.title.x=element_blank(), axis.ticks.x=element_blank())
+p2 <- ggplot(move.df, aes(x=ground_speed)) +
+  scale_x_continuous(breaks=seq(0,25,5)) +
+  geom_histogram(fill='white', colour='black', binwidth=1.5) + 
+  coord_flip() + theme(axis.text.y=element_blank(), axis.title.y=element_blank(), 
+                       axis.ticks.y=element_blank(), axis.text.x=element_text(angle=90))
+p3 <- ggplot(move.df, aes(x=solar.time, y=ground_speed, colour=fcover)) +
+  geom_point(size=0.7) + scale_colour_viridis_c() + 
+  scale_x_continuous(breaks=seq(0,23,2), limits=c(0,23)) +
+  scale_y_continuous(breaks=seq(0,25,5)) + theme(legend.position='bottom')
+
+p1 + plot_spacer() + p3 + p2 + plot_layout(ncol=2, widths=c(0.8, 0.2), heights=c(0.3, 0.7))
+```
+
 
 # acc data is strange for vesper bats
 ```{r}
@@ -49,10 +202,7 @@ plot(phast$acceleration_raw_z[acc_idx], type = "l")
 ```
 
 ```{r}
-plot(speed(phast[[1]]))
-phast %>% speed %>% unlist %>% hist(breaks = 100)
 
-phast %>% distance %>% unlist %>% hist(breaks = 50000, xlim = c(0,5000))
 
 
 ```
