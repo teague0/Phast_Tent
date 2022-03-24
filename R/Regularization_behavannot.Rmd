@@ -43,16 +43,61 @@ tdiff <- ddply(move.df, 'local_identifier', function(id){
 # sadly not as regular as one might hope (in minutes):
 # table(round(tdiff$tdiff/150)*2.5)
 table(round(tdiff$tdiff/120)*2)
+
 ```
 
 The package I’m working with for running HMMs, momentuHMM, integrates some functionality from the crawl package (correlated random walks) that allow it to interpolate trajectories. I haven’t had much luck fitting crawl-models to duck migratory tracks, but there are chances it might work with fruit bats (the crawl library was written with foraging trips of seals in mind, and while fruit bats obviously move very differently, the behaviour does look similar-ish, albeit at a different scale/speed).
 
 If we want to apply HMMs, the first step is to format the tracking data correctly, and then attempt to fit a crawl-model to the data. It’s easier to make it work for a single individual first. Here, I’ll apply the crawl-model to individual 7CCA9E6, for which several days of data are available:
 
+# interpolate points
 ```{r}
+phast$tag_id %>% unique %>% length
+
+int <- data.frame()
+for(i in 1:length(unique(phast$tag_id))){
+  plot(phast[[i]], col = 2)
+  points(mv2 <- interpolateTime(phast[[i]], time=as.difftime(10, units="mins"), 
+                                spaceMethod='greatcircle'))  
+  as.data.frame(mv2)
+  int <- rbind(int, )
+}
+
+```
+
+
+
+#cut off points on Isla Colon
+Exclude Longitude > -82.336365
+```{r}
+df <- int[int$location_long < -82.336365,]
+
+IDlocs <- table(df$tag_id)
+i = 9
+for(i in 1:length(names(IDlocs))){
+  b <- df[df$tag_id == names(IDlocs)[i],]
+  days <- unique(date(b$timestamp))
+  layout(1:length(days))
+  if(length(days) > 6){
+    layout(1)
+  }
+  j = 1
+  for(j in 1:length(days)){
+    d <- b[date(b$timestamp) == days[j],]
+  scan_track(time = d$timestamp, x = d$location_long, y = d$location_lat, 
+             main = paste0(d$local_identifier[1], ", ", date(d$timestamp[1]), 
+                       ": ", nrow(d)))
+    # plot(d$timestamp, d$location_long, 
+    #      type = "o", 
+    #      main = paste0(d$local_identifier[1], ", ", date(d$timestamp[1]), 
+    #                   ": ", nrow(d)),
+    #      col = rgb(0,(1:nrow(d))/nrow(d),
+    #                (nrow(d):1)/nrow(d),1))  
+  }
+}
+```
 # prepare error structure for crawl-model
-IDlocs <- table(move.df$tag_id)
-df <- move.df[move.df$tag_id %in% names(which(IDlocs>100)),]
+```{r}
 
 error.major <- error.minor <- df$gps_hdop# eobs.horizontal.accuracy.estimate
 error.ellipse <- rep(0, length(error.major))
@@ -61,10 +106,14 @@ err.df <- crawl:::argosDiag2Cov(error.major, error.minor, error.ellipse)
 # bind error structure to movement data
 df <- cbind(df, err.df)
 
-# let's say we want the crawl-model to predict a relocation every 120 seconds / 2.5 minutes
+# create ID for each tracked day
+df$ID <- paste0(df$local_identifier,"_", date(df$timestamp))
+table(df$ID)
+
+# let's say we want the crawl-model to predict a relocation every 120 seconds / 2 minutes
 # we need to make a time vector that contains the timestamps we need predictions for 
 # (we could let crawl do the job, but then it would assume we want locations during the daytime as well)
-timestamps <- dlply(df, 'local_identifier', function(id){
+timestamps <- dlply(df, 'ID', function(id){
   tmp <- ddply(id, 'day', function(d){
     min.t <- min(d$timestamp)
     max.t <- max(d$timestamp)
@@ -75,11 +124,12 @@ timestamps <- dlply(df, 'local_identifier', function(id){
 })
 
 # fit initial crawl-model to single individual (using re-projected location coordinates)
-df$ID <- df$local_identifier
 
-tmp <- df[df$local_identifier=='7CCA9E6',]
+tmp <- df[df$ID=='7CCA9E6_2022-02-07',]
 
-test.crwl <- crawlWrap(tmp, Time.name='timestamp', coord=c('x', 'y'), predTime=timestamps[['7CCA9E6']],
+test.crwl <- crawlWrap(tmp, timeStep = 120,
+                       Time.name='timestamp', coord=c('x', 'y'),
+                       predTime=timestamps[['7CCA9E6_2022-02-07']],
                   err.model=list(x=~ln.sd.x-1, y=~ln.sd.y-1, rho=~error.corr), # error model
                   mov.model=~1, # movement model
                   theta=c(8,1.5), # starting parameters from a previous run (start here rather than at 0)
@@ -91,10 +141,10 @@ test.crwl$crwFits
 ```
 
 ```{r}
-tmp <- test.crwl$crwPredict
+tmp <- test.crwl$crwPredict# [500:2000,]
 ggplot(tmp[tmp$locType=='o',]) + geom_point(aes(x=x, y=y, colour=gps_hdop), size=0.7) + 
   labs(title='Observed') + coord_equal() + scale_colour_viridis_c(name='GPS accuracy [m]') +
-  theme(legend.position='bottom') +
+  theme(legend.position='bottom')
 ggplot(tmp[tmp$locType=='p',]) + geom_point(aes(x=mu.x, y=mu.y, colour=se.mu.x), size=0.7) + 
   labs(title='Predicted') + coord_equal() + scale_colour_viridis_c(name='Location uncertainty [m]') +
   theme(legend.position='bottom')
@@ -373,13 +423,13 @@ plot(hmm.ga, sepStates=T, plotTracks=F, ask=FALSE)
 ### weibull
 #### doesnt fit
 ```{r}
-# hmm.wb <- fitHMM(df.7CCA9E6, nbStates=4, 
-#                  dist=list(step='weibull', angle='wrpcauchy'),
-#                  Par0=list(step=start.step.wb, angle=start.turn.wc),
-#                  formula=~cosinor(solar.time, 24),
-#                  estAngleMean=list(angle=T), delta0=d0)
-# hmm.wb
-# plot(hmm.wb, sepStates=T, plotTracks=F, ask=FALSE)
+hmm.wb <- fitHMM(df.7CCA9E6, nbStates=4,
+                 dist=list(step='weibull', angle='wrpcauchy'),
+                 Par0=list(step=start.step.wb, angle=start.turn.wc),
+                 formula=~cosinor(solar.time, 24),
+                 estAngleMean=list(angle=T), delta0=d0)
+hmm.wb
+plot(hmm.wb, sepStates=T, plotTracks=F, ask=FALSE)
 ```
 ### AIC
 ```{r}
@@ -391,13 +441,46 @@ AIC(hmm.ga, hmm.wb)
 Time to start working on the full dataset and find a good set of starting parameters for all individuals. Given that the weibull distribution for step length seems to consistently perform better than gamma, I’ll only use weibull from now on.
 ```{r}
 
-crwl.all <- crawlWrap(df,
+crwl.all <- crawlWrap(obsData = df, timeStep = 120, ncores = 10,
                       Time.name='timestamp', coord=c('x', 'y'), predTime=timestamps,
                       err.model=list(x=~ln.sd.x-1, y=~ln.sd.y-1, rho=~error.corr), # error model
                       mov.model=~1, # movement model
                       theta=c(8,1.5), # starting parameters from a previous run (start here rather than at 0)
                       fixPar=c(median(err.df$ln.sd.x),median(err.df$ln.sd.y),NA,NA))
+crwl.all %>% plot(ask = FALSE)
 ```
+This method often creates weird loops around long gaps in the data. I think we can assume that the bats were stationary if the start and end points are 
+```{r}
+
+tmp <- crwl.all$crwPredict
+
+```
+
+# INTERPOLATE
+## spline or linear interpolation
+```{r}
+
+
+IDs <- unique(df$ID)
+for(i in 1:length(IDs)){
+  d <- df[df$ID == IDs[i],]
+  cw <- tmp[tmp$ID == IDs[i],] 
+  cw$locType
+  
+  as.data.frame(with(coords, list(x = approx(x, n = N)$y, 
+    y = approx(y, n = N)$y)))
+  
+}
+
+plot(leroy[100:150,], col="red",pch=20)
+points(mv2 <- interpolateTime(leroy[100:150,], time=as.difftime(10, units="mins"), 
+                              spaceMethod='greatcircle'))
+
+
+
+```
+
+
 
 ```{r}
 po <- spTransform(SpatialPoints(as.data.frame(crwl.all$crwPredict)[,c('mu.x', 'mu.y')], proj4string=projUTM), CRSobj=proj.ll)
