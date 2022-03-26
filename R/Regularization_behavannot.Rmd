@@ -57,12 +57,13 @@ phast$tag_id %>% unique %>% length
 int <- data.frame()
 for(i in 1:length(unique(phast$tag_id))){
   plot(phast[[i]], col = 2)
-  points(mv2 <- interpolateTime(phast[[i]], time=as.difftime(10, units="mins"), 
+  points(mv <- interpolateTime(phast[[i]], time=as.difftime(2, units="mins"), 
                                 spaceMethod='greatcircle'))  
-  as.data.frame(mv2)
-  int <- rbind(int, )
+  m <- as.data.frame(mv)
+  # Hmisc::describe(m)
+  int <- rbind(int, m)
 }
-
+p <- as.data.frame(phast)
 ```
 
 
@@ -70,23 +71,29 @@ for(i in 1:length(unique(phast$tag_id))){
 #cut off points on Isla Colon
 Exclude Longitude > -82.336365
 ```{r}
-df <- int[int$location_long < -82.336365,]
+df <- int[int$location_long.1 < -82.336365,]
+dfm <- p[p$location_long < -82.336365,]
 
-IDlocs <- table(df$tag_id)
-i = 9
+IDlocs <- table(df$local_identifier)
+i = 19
+keep <- {}
 for(i in 1:length(names(IDlocs))){
-  b <- df[df$tag_id == names(IDlocs)[i],]
-  days <- unique(date(b$timestamp))
-  layout(1:length(days))
-  if(length(days) > 6){
-    layout(1)
-  }
+  b <- df[df$local_identifier == names(IDlocs)[i],]
+  bm <- dfm[dfm$local_identifier == names(IDlocs)[i],]
+  days <- unique(date(b$timestamps))
   j = 1
   for(j in 1:length(days)){
-    d <- b[date(b$timestamp) == days[j],]
-  scan_track(time = d$timestamp, x = d$location_long, y = d$location_lat, 
-             main = paste0(d$local_identifier[1], ", ", date(d$timestamp[1]), 
-                       ": ", nrow(d)))
+    d <- b[date(b$timestamps) == days[j],]
+    dm <- bm[date(bm$timestamps) == days[j],]
+    
+  # scan_track(time = d$timestamps, x = d$location_long.1, y = d$location_lat.1, 
+  #            main = paste0(d$local_identifier[1], ", ", date(d$timestamps[1]), 
+  #                      ": ", nrow(d), ", gps: ", 
+  #                      sum(dm$sensor == "GPS")))
+  
+  if(sum(dm$sensor == "GPS") > 10){
+    keep <- c(keep, paste0(d$local_identifier[1], "_", date(d$timestamps[1])))
+  }
     # plot(d$timestamp, d$location_long, 
     #      type = "o", 
     #      main = paste0(d$local_identifier[1], ", ", date(d$timestamp[1]), 
@@ -95,103 +102,108 @@ for(i in 1:length(names(IDlocs))){
     #                (nrow(d):1)/nrow(d),1))  
   }
 }
+
+# create ID for each tracked day
+df$ID <- paste0(df$local_identifier, "_", date(df$timestamps))
+dfm$ID <- paste0(dfm$local_identifier, "_", date(dfm$timestamps))
+df <- df[df$ID %in% keep,]
 ```
+
 # prepare error structure for crawl-model
 ```{r}
 
-error.major <- error.minor <- df$gps_hdop# eobs.horizontal.accuracy.estimate
-error.ellipse <- rep(0, length(error.major))
-err.df <- crawl:::argosDiag2Cov(error.major, error.minor, error.ellipse)
-
-# bind error structure to movement data
-df <- cbind(df, err.df)
-
-# create ID for each tracked day
-df$ID <- paste0(df$local_identifier,"_", date(df$timestamp))
-table(df$ID)
-
-# let's say we want the crawl-model to predict a relocation every 120 seconds / 2 minutes
-# we need to make a time vector that contains the timestamps we need predictions for 
-# (we could let crawl do the job, but then it would assume we want locations during the daytime as well)
-timestamps <- dlply(df, 'ID', function(id){
-  tmp <- ddply(id, 'day', function(d){
-    min.t <- min(d$timestamp)
-    max.t <- max(d$timestamp)
-    t <- seq(min.t, max.t, 120)
-    return(data.frame(t=t))
-  })
-  return(tmp$t)
-})
+# error.major <- error.minor <- df$gps_hdop# eobs.horizontal.accuracy.estimate
+# error.ellipse <- rep(0, length(error.major))
+# err.df <- crawl:::argosDiag2Cov(error.major, error.minor, error.ellipse)
+# 
+# # bind error structure to movement data
+# df <- cbind(df, err.df)
+# 
+# table(df$ID)
+# 
+# # let's say we want the crawl-model to predict a relocation every 120 seconds / 2 minutes
+# # we need to make a time vector that contains the timestamps we need predictions for 
+# # (we could let crawl do the job, but then it would assume we want locations during the daytime as well)
+# timestamps <- dlply(df, 'ID', function(id){
+#   tmp <- ddply(id, 'day', function(d){
+#     min.t <- min(d$timestamps)
+#     max.t <- max(d$timestamps)
+#     t <- seq(min.t, max.t, 120)
+#     return(data.frame(t=t))
+#   })
+#   return(tmp$t)
+# })
 
 # fit initial crawl-model to single individual (using re-projected location coordinates)
 
 tmp <- df[df$ID=='7CCA9E6_2022-02-07',]
 
-test.crwl <- crawlWrap(tmp, timeStep = 120,
-                       Time.name='timestamp', coord=c('x', 'y'),
-                       predTime=timestamps[['7CCA9E6_2022-02-07']],
-                  err.model=list(x=~ln.sd.x-1, y=~ln.sd.y-1, rho=~error.corr), # error model
-                  mov.model=~1, # movement model
-                  theta=c(8,1.5), # starting parameters from a previous run (start here rather than at 0)
-                  fixPar=c(median(err.df$ln.sd.x),median(err.df$ln.sd.y),NA,NA))
+# test.crwl <- crawlWrap(tmp, timeStep = 120,
+#                        Time.name='timestamp', coord=c('x', 'y'),
+#                        predTime=timestamps[['7CCA9E6_2022-02-07']],
+#                   err.model=list(x=~ln.sd.x-1, y=~ln.sd.y-1, rho=~error.corr), # error model
+#                   mov.model=~1, # movement model
+#                   theta=c(8,1.5), # starting parameters from a previous run (start here rather than at 0)
+#                   fixPar=c(median(err.df$ln.sd.x),median(err.df$ln.sd.y),NA,NA))
+# 
+# test.crwl$crwFits
 ```
 
 ```{r}
-test.crwl$crwFits
-```
-
-```{r}
-tmp <- test.crwl$crwPredict# [500:2000,]
-ggplot(tmp[tmp$locType=='o',]) + geom_point(aes(x=x, y=y, colour=gps_hdop), size=0.7) + 
-  labs(title='Observed') + coord_equal() + scale_colour_viridis_c(name='GPS accuracy [m]') +
+# tmp <- test.crwl$crwPredict# [500:2000,]
+tmp <- df[df$ID=='7CCA9E6_2022-02-07',]
+tmpm <- dfm[dfm$ID == '7CCA9E6_2022-02-07',]
+p1 <- ggplot(tmp) + geom_point(aes(x=location_long.1, y=location_lat.1), size=0.7) + 
+  labs(title='Observed') + coord_equal() + #scale_colour_viridis_c(name='GPS accuracy [m]') +
   theme(legend.position='bottom')
-ggplot(tmp[tmp$locType=='p',]) + geom_point(aes(x=mu.x, y=mu.y, colour=se.mu.x), size=0.7) + 
+p2 <- ggplot(tmpm) + geom_point(aes(x=location_long, y=location_lat, colour=gps_hdop), size=0.7) + 
   labs(title='Predicted') + coord_equal() + scale_colour_viridis_c(name='Location uncertainty [m]') +
   theme(legend.position='bottom')
+ggpubr::ggarrange(p1,p2)
 ```
 
 ```{r}
-# Comparing predicted & observed x- & y-coordinates
-ggplot(tmp, aes(x=timestamp)) +
-  geom_point(aes(y=x, colour=locType), size=0.7) +
-  geom_point(aes(y=mu.x, colour=locType), size=0.7) + 
-  labs(title='Observed & predicted x-coordinates') +
-  coord_equal() + theme(legend.position='none') +
-ggplot(tmp, aes(x=timestamp)) +
-  geom_point(aes(y=y, colour=locType), size=0.7) +
-  geom_point(aes(y=mu.y, colour=locType), size=0.7) + 
-  labs(title='Observed & predicted y-coordinates') +
-  coord_equal() + theme(legend.position='bottom') +
-plot_layout(ncol=1)
+# # Comparing predicted & observed x- & y-coordinates
+# ggplot(tmp, aes(x=timestamp)) +
+#   geom_point(aes(y=x, colour=locType), size=0.7) +
+#   geom_point(aes(y=mu.x, colour=locType), size=0.7) + 
+#   labs(title='Observed & predicted x-coordinates') +
+#   coord_equal() + theme(legend.position='none') +
+# ggplot(tmp, aes(x=timestamp)) +
+#   geom_point(aes(y=y, colour=locType), size=0.7) +
+#   geom_point(aes(y=mu.y, colour=locType), size=0.7) + 
+#   labs(title='Observed & predicted y-coordinates') +
+#   coord_equal() + theme(legend.position='bottom') +
+# plot_layout(ncol=1)
 ```
 
 ```{r}
 # comparing observed & predicted speed estimates 
 # not instantaneous GPS-speed, but dist/time diff.
-
-p <- tmp[tmp$locType=='p',]
-speed.p <- rbind.fill(lapply(2:nrow(p), function(j){
-  d <- gDistance(SpatialPoints(as.data.frame(p[j,c('mu.x', 'mu.y')], proj4string=proj.eqd)),
-                 SpatialPoints(as.data.frame(p[j-1,c('mu.x', 'mu.y')], proj4string=proj.eqd)))
-  t <- as.numeric(difftime(p$timestamp[j], p$timestamp[j-1], unit='secs'))
-  return(data.frame(type='p', d=d, t=t, v=d/t))
-}))
-
-o <- tmp[tmp$locType=='o',]
-speed.o <- rbind.fill(lapply(2:nrow(o), function(j){
-  d <- gDistance(SpatialPoints(as.data.frame(o[j,c('mu.x', 'mu.y')], proj4string=proj.eqd)),
-                 SpatialPoints(as.data.frame(o[j-1,c('mu.x', 'mu.y')], proj4string=proj.eqd)))
-  t <- as.numeric(difftime(o$timestamp[j], o$timestamp[j-1], unit='secs'))
-  return(data.frame(type='p', d=d, t=t, v=d/t))
-}))
-
-# note that the y-axis is square-root-transformed!
-ggplot(speed.p, aes(x=v)) + geom_histogram(aes(y=..density..), fill='white', colour='black', binwidth=1) + 
-  scale_y_sqrt(breaks=seq(0.1,0.7,0.1)) + 
-  labs(title='Speed from predicted locations', x='ground speed [m/s]') +
-ggplot(speed.o, aes(x=v)) + geom_histogram(aes(y=..density..), fill='white', colour='black', binwidth=1) + 
-  scale_y_sqrt(breaks=seq(0.1,0.7,0.1)) + labs(title='Speed from observed locations', x='ground speed [m/s]') +
-  plot_layout(ncol=1)
+# 
+# p <- tmp[tmp$locType=='p',]
+# speed.p <- rbind.fill(lapply(2:nrow(p), function(j){
+#   d <- gDistance(SpatialPoints(as.data.frame(p[j,c('mu.x', 'mu.y')], proj4string=proj.eqd)),
+#                  SpatialPoints(as.data.frame(p[j-1,c('mu.x', 'mu.y')], proj4string=proj.eqd)))
+#   t <- as.numeric(difftime(p$timestamp[j], p$timestamp[j-1], unit='secs'))
+#   return(data.frame(type='p', d=d, t=t, v=d/t))
+# }))
+# 
+# o <- tmp[tmp$locType=='o',]
+# speed.o <- rbind.fill(lapply(2:nrow(o), function(j){
+#   d <- gDistance(SpatialPoints(as.data.frame(o[j,c('mu.x', 'mu.y')], proj4string=proj.eqd)),
+#                  SpatialPoints(as.data.frame(o[j-1,c('mu.x', 'mu.y')], proj4string=proj.eqd)))
+#   t <- as.numeric(difftime(o$timestamp[j], o$timestamp[j-1], unit='secs'))
+#   return(data.frame(type='p', d=d, t=t, v=d/t))
+# }))
+# 
+# # note that the y-axis is square-root-transformed!
+# ggplot(speed.p, aes(x=v)) + geom_histogram(aes(y=..density..), fill='white', colour='black', binwidth=1) + 
+#   scale_y_sqrt(breaks=seq(0.1,0.7,0.1)) + 
+#   labs(title='Speed from predicted locations', x='ground speed [m/s]') +
+# ggplot(speed.o, aes(x=v)) + geom_histogram(aes(y=..density..), fill='white', colour='black', binwidth=1) + 
+#   scale_y_sqrt(breaks=seq(0.1,0.7,0.1)) + labs(title='Speed from observed locations', x='ground speed [m/s]') +
+#   plot_layout(ncol=1)
 ```
 
 It seems that the speed distribution is more skewed towards slow speeds in the predicted locations. This is expected, as the model will mostly interpolate locations when the sampling frequency is 1/30 minutes because individuals are inactive.
@@ -201,9 +213,14 @@ From here, we can start analysing the movement data in relation to the different
 Either way, to get the starting parameters for a more complex HMM right, I will first explore some simpler 2/3-state models (foraging and/or rest, and commuting flight). I’ll do this by running a multiple-imputation HMM (which tries to accomodate for missing/irregular/uncertain locations) from the package momentuHMM. Theoretically, we can fit this model using whatever data streams we want - step length, ground speed, turning angle, accelerometry - as long as we can describe those data streams sufficiently well with a distribution. For this test model, I’ll use step length and turning angles, and define some starting parameters from looking at the data visually. For step lengths, gamma and weibull distributions tend to fit quite well, whereas turning angles seem to be captured best by wrapped cauchy or von mises distributions. We can test all of these to see which ones work best for the bats. Again, let’s initially make it work with a single individual:
 
 ```{r}
-df.7CCA9E6 <- prepData(test.crwl, type='UTM')
+po <- spTransform(SpatialPoints(tmp[,c("location_lat.1", "location_long.1")], proj4string=proj.ll), CRSobj=projUTM)
+tmp$y <- po@coords[,2]
+tmp$x <- po@coords[,1]
+df.7CCA9E6 <- prepData(data = tmp, type='UTM', 
+                       coordNames = c("x","y"))
 df.7CCA9E6$step <- df.7CCA9E6$step/1000 # convert step length to km
 
+hist(df.7CCA9E6$step)
 # step lengths
 d.fast <- df.7CCA9E6$step[df.7CCA9E6$step>.5]
 d.fast <- d.fast[!is.na(d.fast)]
@@ -227,7 +244,7 @@ ggplot(df.7CCA9E6[df.7CCA9E6$step>.5,], aes(x=step)) + geom_density(fill='white'
 ggplot(df.7CCA9E6[df.7CCA9E6$step<=.5,], aes(x=step)) + geom_density(fill='white', colour='black') +
   stat_function(fun=dweibull, colour="red", args=list(shape=d.slow.we$estimate[1], scale=d.slow.we$estimate[2])) +
   stat_function(fun=dgamma, colour="blue", args=list(shape=d.slow.ga$estimate[1], rate=d.slow.ga$estimate[2])) +
-  ylim(0,20) + plot_layout(ncol=1)
+  ylim(0,30) + plot_layout(ncol=1)
 ```
 
 ```{r}
@@ -325,7 +342,7 @@ hmm.ga <- fitHMM(df.7CCA9E6, nbStates=2, stateNames=c('AR', 'transit'),
                  Par0=list(step=start.step.ga[1:4], angle=start.turn.wc),
                  estAngleMean=list(angle=T), delta0=d0)
 hmm.ga
-plot(hmm.ga, sepStates=T, plotTracks=F, plotCI=T, ask = FALSE)
+plot(hmm.ga, sepStates=T, plotTracks=T, plotCI=T, ask = FALSE)
 ```
 ### weibull
 ```{r}
@@ -441,75 +458,56 @@ AIC(hmm.ga, hmm.wb)
 Time to start working on the full dataset and find a good set of starting parameters for all individuals. Given that the weibull distribution for step length seems to consistently perform better than gamma, I’ll only use weibull from now on.
 ```{r}
 
-crwl.all <- crawlWrap(obsData = df, timeStep = 120, ncores = 10,
-                      Time.name='timestamp', coord=c('x', 'y'), predTime=timestamps,
-                      err.model=list(x=~ln.sd.x-1, y=~ln.sd.y-1, rho=~error.corr), # error model
-                      mov.model=~1, # movement model
-                      theta=c(8,1.5), # starting parameters from a previous run (start here rather than at 0)
-                      fixPar=c(median(err.df$ln.sd.x),median(err.df$ln.sd.y),NA,NA))
-crwl.all %>% plot(ask = FALSE)
+# crwl.all <- crawlWrap(obsData = df, timeStep = 120, ncores = 10,
+#                       Time.name='timestamp', coord=c('x', 'y'), predTime=timestamps,
+#                       err.model=list(x=~ln.sd.x-1, y=~ln.sd.y-1, rho=~error.corr), # error model
+#                       mov.model=~1, # movement model
+#                       theta=c(8,1.5), # starting parameters from a previous run (start here rather than at 0)
+#                       fixPar=c(median(err.df$ln.sd.x),median(err.df$ln.sd.y),NA,NA))
+# crwl.all %>% plot(ask = FALSE)
 ```
 This method often creates weird loops around long gaps in the data. I think we can assume that the bats were stationary if the start and end points are 
 ```{r}
 
-tmp <- crwl.all$crwPredict
+# tmp <- crwl.all$crwPredict
 
 ```
 
-# INTERPOLATE
-## spline or linear interpolation
-```{r}
-
-
-IDs <- unique(df$ID)
-for(i in 1:length(IDs)){
-  d <- df[df$ID == IDs[i],]
-  cw <- tmp[tmp$ID == IDs[i],] 
-  cw$locType
-  
-  as.data.frame(with(coords, list(x = approx(x, n = N)$y, 
-    y = approx(y, n = N)$y)))
-  
-}
-
-plot(leroy[100:150,], col="red",pch=20)
-points(mv2 <- interpolateTime(leroy[100:150,], time=as.difftime(10, units="mins"), 
-                              spaceMethod='greatcircle'))
-
-
-
-```
-
-
+## prep all data
 
 ```{r}
-po <- spTransform(SpatialPoints(as.data.frame(crwl.all$crwPredict)[,c('mu.x', 'mu.y')], proj4string=projUTM), CRSobj=proj.ll)
-crwl.all$crwPredict$solar.time <- unlist(lapply(1:nrow(crwl.all$crwPredict), function(j){
-  noon <- solarnoon(po[j,], as.data.frame(crwl.all$crwPredict)$timestamp[j], POSIXct.out=TRUE)$time
-  tod <- as.numeric(difftime(as.data.frame(crwl.all$crwPredict)$timestamp[j], noon, units='hours'))
+po <- spTransform(SpatialPoints(df[,c("location_lat.1", "location_long.1")], proj4string=proj.ll), CRSobj=projUTM)
+df$y <- po@coords[,2]
+df$x <- po@coords[,1]
+po <- SpatialPoints(df[,c("location_lat.1", "location_long.1")], proj4string=proj.ll)
+
+df$solar.time <- unlist(lapply(1:nrow(df), function(j){
+  noon <- solarnoon(po[j,], df$timestamps[j], POSIXct.out=TRUE)$time
+  tod <- as.numeric(difftime(df$timestamps[j], noon, units='hours'))
   return(tod)
 }))
 # shift solar time to be all-positive, from noon to noon
-crwl.all$crwPredict$solar.time <- (crwl.all$crwPredict$solar.time+24)%%24
+df$solar.time <- (df$solar.time+24)%%24
 
-crwl.all$crwPredict$day <- as.vector(unlist(dlply(as.data.frame(crwl.all$crwPredict), 'ID', function(id){
+df$day <- as.vector(unlist(dlply(as.data.frame(df), 'ID', function(id){
   c(0, cumsum(diff(id$solar.time)<0)) + 1
 })))
 
 # compute solar elevation
-crwl.all$crwPredict$solar.pos <- unlist(lapply(1:nrow(crwl.all$crwPredict), function(j){
-  pos <- solarpos(po[j,], crwl.all$crwPredict$timestamp[j])
+df$solar.pos <- unlist(lapply(1:nrow(df), function(j){
+  pos <- solarpos(po[j,], df$timestamps[j])
   return(pos[,2])
 }))
 
-crwl.all$crwPredict$ID <- paste(crwl.all$crwPredict$ID, crwl.all$crwPredict$day, sep='-')
+# df$ID <- paste(df$ID, df$day, sep='-')
 
-crwl.all$crwPredict
-
-hmm.df <- prepData(crwl.all, type='UTM')
+hmm.df <- prepData(df, type='UTM')
 hmm.df$speed <- hmm.df$step/120
 hmm.df$step <- sqrt(hmm.df$step) # square-root transformation for step length
 hist(hmm.df$step)
+
+hmm.df <- hmm.df[,c("ID", "step", "angle", "solar.time")]
+names(hmm.df)
 ```
 
 ```{r}
@@ -524,7 +522,7 @@ start.speed.wb <- c(1.2, 1.2, 2.5, # shape
                     0.05, 0.5, 9) # scale
                     
 # let's take a look at an empirical CDF to decide on estimates for the initial distribution of states:
-plot(ecdf(df$ground.speed), main='ECDF of ground speed (original data)')
+plot(ecdf(hmm.df$speed), main='ECDF of speed')
 ```
 
 ```{r}
@@ -535,11 +533,12 @@ abline(h=c(0.85, 0.9, 1.0), col='red')
 ```{r}
 d0 <- c(0.85, 0.05, 0.1)
 
-# only individuals with at least 6 hours of data (~50% of a night's locations):
-min.n <- (3600/120)*6
-check <- ddply(hmm.df, 'ID', nrow)
-keep <- check$ID[check$V1>min.n] # 98 out of 103 individual-nights
-hmm.df <- hmm.df[hmm.df$ID %in% keep,]
+# # only individuals with at least 6 hours of data (~50% of a night's locations):
+# min.n <- (3600/120)*6
+# check <- ddply(hmm.df, 'ID', nrow)
+# keep <- check$ID[check$V1>min.n] # 98 out of 103 individual-nights
+# hmm.df <- hmm.df[hmm.df$ID %in% keep,]
+
 
 hmm.all <- fitHMM(hmm.df, nbStates=3, #stateNames=c('AR', 'short.transit', 'long.transit'),
                   dist=list(step='weibull', angle='wrpcauchy'),
@@ -565,4 +564,7 @@ ggplot(hmm.df[grep('7CCA9E6', hmm.df$ID),],
   scale_colour_manual(values=wesanderson:::wes_palette('Darjeeling1', 4)) +
   facet_wrap(~ID) + labs(y='Step length [km]')
 ```
+
+
+
 
