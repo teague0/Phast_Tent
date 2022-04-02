@@ -7,10 +7,10 @@ Exploring FPT to identify foraging sites
 
 HMM didn't work well when attempting to regularize the data
 
-
+# load libraries
 ```{r}
 library(pacman)
-p_load("momentuHMM", "lubridate", "data.table", "zoo", "move", "dplyr", "adehabitatLT")
+p_load("momentuHMM", "lubridate", "data.table", "zoo", "move", "dplyr", "adehabitatLT", ggplot2, latticeExtra)
 
 source("../../../movebank_login.R")
 
@@ -18,6 +18,7 @@ proj.ll <- CRS('+proj=longlat +datum=WGS84 +no_defs')
 projUTM <- CRS("+proj=utm +zone=17 +ellps=GRS80 +datum=NAD83 +units=m +no_defs")
 ```
 
+# load data
 ```{r}
 load("../../../../Dropbox/MPI/Phyllostomus/Fieldwork/Data/results_part1.rdata")
 load("../../../../Dropbox/MPI/Phyllostomus/Fieldwork/Data/phastmove.rdata")
@@ -27,7 +28,10 @@ inf <- read.delim("../../../../Dropbox/MPI/Phyllostomus/Fieldwork/Data/Greater s
 
 # Create traj  
 ```{r}
+plot(phast)
+phast <- phast[phast$location_long > -90,]
 df <- as.data.frame(phast)
+
 po <- spTransform(SpatialPoints(df[,c("location_long", "location_lat")], proj4string=proj.ll), CRSobj=projUTM)
 df$y <- po@coords[,2]
 df$x <- po@coords[,1]
@@ -116,84 +120,34 @@ Split <- strsplit(as.character(Bats$bat), "_", fixed = TRUE)
 Bats$id <- sapply(Split, "[", 1)
 
 summary(Bats)
-# Bats
-i = 1
-pj$FPT <- NA
-pj$FPT01 <- NA
-IDX <- {}
 
-for(i in 1:nrow(pj)){
-  idx <- which(pj$ID[i] == Bats$bat & pj$date[i] == Bats$date)
-  if(length(idx) == 0){
-    bidx <- which(pj$ID[i] == Bats$bat)
-    times <- abs(difftime(pj$time[i], Bats$date[bidx], units = "sec"))
-    
-    if(times[which.min(times)] < 15){
-      idx <- which.min(times)
-    }
-    # idx <- which.min(abs(pj$time[bidx] - Bats$date))
-  }
-  # print(idx)
-  IDX <- c(IDX, length(idx))
-  if(length(idx)>0){
-    pj$FPT[i] <- Bats$FPT[idx]
-    pj$FPT01[i] <- Bats$FPT01[idx]  
-  }
-  
-}
-
-# pj$FPT
-# summary(pj)
-# unique(pj$bat_flight)
-```
-
-
-## Plot FPT data
-```{r}
-
-mixmdl_df <- data.frame(x = mixmdl$x)
-
-ggmix <- ggplot(mixmdl_df, aes(x = x)) + 
-    geom_histogram(aes(y =..density..),
-                   breaks = seq(4, 7, by = .05), 
-                   colour = "black", 
-                   fill = "white") + 
-# stat_function(fun = dnorm, args = list(mean = mixmdl$mu[1], sd = mixmdl$sigma[1]), col = 3)+
-  stat_function(fun = dnorm, args = list(mean = mixmdl$mu[2], sd = mixmdl$sigma[2]), col = 2)+
-  theme_classic() + geom_vline(xintercept = threshold, cex = 1, linetype = 2) + xlab("ln(FPT)")
-
-#png(filename = "../plots/Seg_Viv_FPT.png", width = 800, height = 600)
-ggpubr::ggarrange(p+theme(text = element_text(size=15)), ggmix+theme(text = element_text(size=15)), labels = c("A", "B"), ncol = 2, nrow = 1)
-#dev.off()
 ```
 # plot tracks
 ```{r}
-IDs <- unique(Bats$bat)
-i = 144
-
-for(i in 1:length(IDs)){
-  b <- Bats[Bats$bat == IDs[i],]
-  # plot(b$x, b$y, col = b$FPT01+1, 
-  #      asp = 1)
-  
-  p <- ggplot(b[30:100,], aes(x, y, col = FPT))+geom_path()+
-    geom_point(aes(size = FPT), shape = 21)+
-    viridis::scale_color_viridis()+theme_minimal()
-  print(p)
-  
-  ggplot(b[30:100,], aes(x,y,col = FPT))+geom_tile
-  
-  levelplot(FPT~x*y, data = b[30:100,], #panel = panel.levelplot.points, 
-            cex = 1.2)+  
-    layer_(panel.2dsmoother(..., n = 10))
-}
+# IDs <- unique(Bats$id)
+# i = 14
+# 
+# for(i in 1:length(IDs)){
+#   b <- Bats[Bats$id == IDs[i],]
+#   # plot(b$x, b$y, col = b$FPT01+1,
+#   #      asp = 1)
+#   
+#   p <- ggplot(b, aes(x, y, col = FPT))+geom_path()+
+#     geom_point(aes(size = FPT), shape = 21)+
+#     viridis::scale_color_viridis()+theme_minimal()
+#   print(p)
+#   
+#   ggplot(b[30:100,], aes(x,y,col = FPT))+geom_tile
+#   
+#   levelplot(FPT~x*y, data = b[30:100,], #panel = panel.levelplot.points, 
+#             cex = 1.2)+  
+#     layer_(panel.2dsmoother(..., n = 10))
+# }
 
 ```
-
+# plot level plot FPT
 ```{r}
-# library
-library(latticeExtra) 
- 
+
 # create data
 set.seed(1) 
 data <- data.frame(x = rnorm(100), y = rnorm(100)) 
@@ -204,37 +158,85 @@ levelplot(z ~ x * y, data,
           panel = panel.levelplot.points, cex = 1.2
     ) + 
     layer_(panel.2dsmoother(..., n = 200))
+
+Bats$FPT %>% hist(breaks = 500, xlim = c(0,500))
+levelplot(FPT~x*y, data = Bats[Bats$FPT > 200 & Bats$x > 350000,],
+          panel = panel.levelplot.points, cex = 1)+
+  layer_(panel.2dsmoother(...,n = 200))
+
+
+
+```
+# rasterize FPT
+```{r}
+###############################
+# rasterize points
+###############################
+high_fpt <- Bats[which(Bats$FPT > 100 & Bats$x < 350000),]
+
+r <- raster(ncols=500, nrows=500)
+r <- projectExtent(r, projUTM)
+extent(r) <- extent(min(high_fpt$x, na.rm = TRUE)-500, 
+                    max(high_fpt$x, na.rm = TRUE)+500, 
+                    min(high_fpt$y, na.rm = TRUE)-500, 
+                    max(high_fpt$y, na.rm = TRUE)+500)
+xy <- cbind(high_fpt$x, high_fpt$y)
+r
+fpt <- rasterize(xy, r, high_fpt$FPT, fun=sum)
+plot(fpt)
+FPT <- projectRaster(fpt, crs = proj.ll)
+plot(FPT)
+values(FPT) <- log(values(FPT))
+```
+
+```{r}
+devtools::install_github("ropensci/rnaturalearthhires")
+p_load(archdata, sp, leaflet, rgdal, rgeos, spatstat, rworldmap, 
+       ggmap, gstat, leaflet, mapview, raster, rnaturalearth, rnaturalearthdata)
+
 ```
 
 
-# identify foraging patches
-## get centroids
 ```{r}
-for(i in 1:length(IDs)){
-  b <- Bats[Bats$bat == IDs[i],]
-  
-  spline(b$FPT, n = 20) %>% plot(type = "l")
-  patches <- rle(b$FPT01)
-  hist(patches$lengths[patches$values == 1], breaks = 20)
-  
-  plot(b$FPT, type = "o")
-}
-```
-
-```{r}
-library(mapview)
-
-mapview(breweries, zcol = "founded", at = seq(1400, 2200, 200), legend = TRUE)
-breweries %>% is
-breweries %>% str
-```
-
-```{r}
-Bats$geometry <- sf::as_Spatial()
+panama <- ne_countries(country = "Panama", scale = 10)
+panama <- ne_states(country = "Panama")
+bocas <- panama[panama$name == "Bocas del Toro",]
 ```
 
 
 ```{r}
-save(Bats, )
+m1 <- mapview(bocas, color = "gray10", alpha.regions = 0)
+
+spplot(FPT)
+fpt_contour <- rasterToContour(FPT, nlevels = 5)
+
+names(df)
+p_spat <-  SpatialPointsDataFrame(coords = df[,c("location_long", "location_lat")], 
+                                   data = df[,c(1,7,9,11:15,17,30,40)], 
+                                   proj4string = proj.ll)
+plot(p_spat)
+```
+
+```{r}
+
+m2 <- mapview(p_spat, alpha.regions = 0.1)
+m3 <- mapview(FPT, alpha.regions = 0.50, na.color = "transparent")
+m4 <- mapview(fpt_contour, lwd = 0.5, color = "gray40")
+m2+m3+m4
+
+```
+
+
+
+```{r}
+values(FPT) %>% hist
+
+idx <- which(values(FPT) > 10)
+xy <- coordinates(FPT)[idx,] %>% unique
+long_bouts <-  SpatialPointsDataFrame(coords = xy, 
+                                      data = as.data.frame(xy),
+                                   proj4string = proj.ll)
+m5 <- mapview(long_bouts, color = "red", alpha.regions = 0.2)
+m5
 ```
 
