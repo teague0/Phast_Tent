@@ -10,7 +10,7 @@ HMM didn't work well when attempting to regularize the data
 
 ```{r}
 library(pacman)
-p_load("momentuHMM", "lubridate", "data.table", "zoo", "move", "dplyr", "adehabitatLT")
+p_load("momentuHMM", "lubridate", "data.table", "zoo", "move", "dplyr", "adehabitatLT", mixtools)
 
 source("../../../movebank_login.R")
 
