@@ -77,6 +77,10 @@ load("../../../../Dropbox/MPI/Phyllostomus/Fieldwork/Data/phastmove.rdata")
 #phast_gps <- getMovebankData(study="Greater spear-nosed bat (Phyllostomus hastatus) in Bocas del Toro 2021-2022", login=login, removeDuplicatedTimestamps = TRUE, sensorID = "GPS")
 ```
 
+```{r}
+phast[[1]] %>% as.data.frame
+```
+
 # remove outlier
 ```{r}
 phast <- phast[phast$location_long > -90,]

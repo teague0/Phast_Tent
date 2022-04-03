@@ -11,11 +11,11 @@ HMM didn't work well when attempting to regularize the data
 ```{r}
 library(pacman)
 
-p_load("momentuHMM", "lubridate", "data.table", "zoo", "move", "dplyr", "adehabitatLT", mixtools, ggplot2, latticeExtra)
+p_load("momentuHMM", "lubridate", "data.table", "zoo", "move", "dplyr", "adehabitatLT", mixtools, ggplot2, latticeExtra, janitor)
 
 # source("../../../movebank_login.R")
 
-proj.ll <- CRS('+proj=longlat +datum=WGS84 +no_defs')
+proj.ll <- CRS('+proj=lonlat +datum=WGS84 +no_defs')
 projUTM <- CRS("+proj=utm +zone=17 +ellps=GRS80 +datum=NAD83 +units=m +no_defs")
 ```
 
@@ -28,18 +28,19 @@ inf <- read.delim("../../../../Dropbox/MPI/Phyllostomus/Fieldwork/Data/Greater s
 
 # get technosmart data
 ```{r}
-ajcave <- "D:/TrackingDryseason/AJcave/movebankfiles"
-gps_files <- list.files(path = ajcave, pattern = "*gps*", full.names = TRUE)
+technosmart <- "D:/TrackingDryseason/"
+gps_files <- list.files(path = technosmart, pattern = "*gps.csv", full.names = TRUE, recursive = TRUE)
 
 aj <- data.table()
 for(i in 1:length(gps_files)){
-  aj_tag <- fread(gps_files[i])  
+  aj_tag <- fread(gps_files[i]) %>% clean_names() 
   aj <- rbind(aj, aj_tag, fill = TRUE)
 }
 
-aj$time <- aj$Timestamp %>% dmy_hms
 
-plot(aj$location.lon, aj$location.lat, asp = 1, col = as.factor(aj$TagID))
+aj$time <- aj$timestamp %>% dmy_hms
+
+plot(aj$location_lon, aj$location_lat, asp = 1, col = as.factor(aj$tag_id))
 
 ```
 
@@ -47,22 +48,22 @@ plot(aj$location.lon, aj$location.lat, asp = 1, col = as.factor(aj$TagID))
 # Create traj  
 ```{r}
 # plot(phast)
-# phast <- phast[phast$location_long > -90,]
+# phast <- phast[phast$location_lon > -90,]
 # df <- as.data.frame(phast)
 
 df <- aj
-df$location_lat <-  df$location.lat
-df$location_long <- df$location.lon
+# df$location_lat <-  df$location.lat
+# df$location_lon <- df$location.lon
 
 
-po <- spTransform(SpatialPoints(df[,c("location_long", "location_lat")], proj4string=proj.ll), CRSobj=projUTM)
+po <- spTransform(SpatialPoints(df[,c("location_lon", "location_lat")], proj4string=proj.ll), CRSobj=projUTM)
 df$y <- po@coords[,2]
 df$x <- po@coords[,1]
 
 df$date <- date(df$time)
-df$ID <- paste0(df$TagID, "_", df$date)
+df$ID <- paste0(df$tag_id, "_", df$date)
 
-p.traj <- as.ltraj(data.frame(X = df$x, Y = df$y), date = df$time, id = factor(df$TagID), burst = df$ID)
+p.traj <- as.ltraj(data.frame(X = df$x, Y = df$y), date = df$time, id = factor(df$tag_id), burst = df$ID)
 pj <- ld(p.traj)
 
 ```
@@ -182,7 +183,7 @@ levelplot(z ~ x * y, data,
     ) + 
     layer_(panel.2dsmoother(..., n = 200))
 
-Bats$FPT %>% hist(breaks = 500, xlim = c(0,500))
+Bats$FPT %>% hist(breaks = 500, xlim = c(0,1000))
 levelplot(FPT~x*y, data = Bats[Bats$FPT > 200 & Bats$x > 350000,],
           panel = panel.levelplot.points, cex = 1)+
   layer_(panel.2dsmoother(...,n = 200))
@@ -197,7 +198,7 @@ levelplot(FPT~x*y, data = Bats[Bats$FPT > 200 & Bats$x > 350000,],
 ###############################
 high_fpt <- Bats[which(Bats$FPT > 100),] # & Bats$x < 350000),]
 
-r <- raster(ncols=1000, nrows=1000)
+r <- raster(ncols=2000, nrows=2000)
 r <- projectExtent(r, projUTM)
 extent(r) <- extent(min(high_fpt$x, na.rm = TRUE)-500, 
                     max(high_fpt$x, na.rm = TRUE)+500, 
@@ -234,19 +235,29 @@ spplot(FPT)
 fpt_contour <- rasterToContour(FPT, nlevels = 5)
 
 names(df)
-p_spat <-  SpatialPointsDataFrame(coords = df[,c("location_long", "location_lat")], 
+p_spat <-  SpatialPointsDataFrame(coords = df[,c("location_lon", "location_lat")], 
                                   data = df,
                                   #data = df[,c(1,7,9,11:15,17,30,40)], 
                                    proj4string = proj.ll)
+p39 <- SpatialPointsDataFrame(coords = df[df$ID == "PH_TS_039_S2_2022-03-15",
+                                          c("location_lon", "location_lat")], 
+                                  data = df[df$ID == "PH_TS_039_S2_2022-03-15",],
+                                  #data = df[,c(1,7,9,11:15,17,30,40)], 
+                                   proj4string = proj.ll)
+
+
+df$ID %>% unique
 plot(p_spat)
+plot(p39)
 ```
 
 ```{r}
 
 m2 <- mapview(p_spat, alpha.regions = 0.1)
+m39 <- mapview(p39, alpha.regions = 0.1)
 m3 <- mapview(FPT, alpha.regions = 0.50, na.color = "transparent")
 m4 <- mapview(fpt_contour, lwd = 0.5, color = "gray40")
-m3
+m2+m3
 
 ```
 
@@ -257,10 +268,10 @@ values(FPT) %>% hist
 
 idx <- which(values(FPT) > 10)
 xy <- coordinates(FPT)[idx,] %>% unique
-long_bouts <-  SpatialPointsDataFrame(coords = xy, 
+lon_bouts <-  SpatialPointsDataFrame(coords = xy, 
                                       data = as.data.frame(xy),
                                    proj4string = proj.ll)
-m5 <- mapview(long_bouts, color = "red", alpha.regions = 0.2)
+m5 <- mapview(lon_bouts, color = "red", alpha.regions = 0.2)
 m5
 ```
 
