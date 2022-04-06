@@ -3,15 +3,17 @@
 library(raster)
 library(rgdal)
 
-files <- list.files("D:/Bocas_2022_03_07_psscene_analytic_sr_udm2/files/", pattern = "*harmonized_clip.tif", 
+files <- list.files("H:/Bocas_2022_03_07_psscene_analytic_sr_udm2/files/", pattern = "*harmonized_clip.tif", 
                     full.names = TRUE)
 Bocas <- list()
-for(i in 1:3){
+for(i in 1:length(files)){
   Bocas[i] <- stack(files[i])    
 }
 
 m <- do.call(merge, Bocas)
 plot(m)
+save(m, file = "H:/Bocas_2022_03_07_psscene_analytic_sr_udm2/bocas.robj")
+
 ?raster::merge
 
 plot(Bocas[[1]])
