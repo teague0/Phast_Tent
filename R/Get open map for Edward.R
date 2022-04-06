@@ -22,17 +22,17 @@ mapview::mapview(corners, map.types="Esri.WorldImagery")
 ##########################Method 2###################
 ### Use known window and plot in ggplot
 
-library(OpenStreetMap)
-library(raster)
+require(pacman)
+p_load(OpenStreetMap, raster)
 
 ##example with 200m window
-# corners=data.frame(cbind(c(626000,626200),c(1012000,1012200)))
+corners=data.frame(cbind(c(626000,626200),c(1012000,1012200)))
 corners <- SpatialPointsDataFrame(coords = corners[,c(1,2)], data = corners,
                                   proj4string=CRS("+proj=utm +zone=17 +datum=WGS84 +units=m +no_defs"))
 corners <- spTransform(corners, CRS("+proj=longlat +datum=WGS84"))
 corners=extent(corners)
 
-map <- openmap(c(lat = corners[3], lon =corners[1]) ,
+map <- OpenStreetMap::openmap(c(lat = corners[3], lon =corners[1]) ,
                c(lat = corners[4], lon = corners[2])  , minNumTiles = 2, type = "bing")
 map2 <- raster::raster(map)
 map2=raster::projectRaster(from=map2, crs = "+proj=utm +zone=17 +datum=WGS84 +units=m +no_defs")

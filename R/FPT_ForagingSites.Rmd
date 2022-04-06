@@ -11,7 +11,8 @@ HMM didn't work well when attempting to regularize the data
 ```{r}
 library(pacman)
 
-p_load("momentuHMM", "lubridate", "data.table", "zoo", "move", "dplyr", "adehabitatLT", mixtools, ggplot2, latticeExtra, janitor)
+p_load(momentuHMM, lubridate, data.table, zoo, move, dplyr, adehabitatLT, mixtools, ggplot2, latticeExtra, janitor, archdata, sp, leaflet, rgdal, rgeos, spatstat, rworldmap, 
+       ggmap, gstat, leaflet, mapview, raster, rnaturalearth, rnaturalearthdata, marmap)
 
 # source("../../../movebank_login.R")
 
@@ -21,9 +22,34 @@ projUTM <- CRS("+proj=utm +zone=17 +ellps=GRS80 +datum=NAD83 +units=m +no_defs")
 
 # load data
 ```{r}
-load("../../../../Dropbox/MPI/Phyllostomus/Fieldwork/Data/results_part1.rdata")
-load("../../../../Dropbox/MPI/Phyllostomus/Fieldwork/Data/phastmove.rdata")
-inf <- read.delim("../../../../Dropbox/MPI/Phyllostomus/Fieldwork/Data/Greater spear-nosed bat (Phyllostomus hastatus) in Bocas del Toro 2021-2022-reference-data.csv", header=T, sep=',', as.is=T)
+# load("../../../../Dropbox/MPI/Phyllostomus/Fieldwork/Data/results_part1.rdata")
+# load("../../../../Dropbox/MPI/Phyllostomus/Fieldwork/Data/phastmove.rdata")
+# inf <- read.delim("../../../../Dropbox/MPI/Phyllostomus/Fieldwork/Data/Greater spear-nosed bat (Phyllostomus hastatus) in Bocas del Toro 2021-2022-reference-data.csv", header=T, sep=',', as.is=T)
+```
+
+## load maps
+```{r}
+panama <- ne_countries(country = "Panama", scale = 10)
+panama <- ne_states(country = "Panama", returnclass = "sf")
+bocas <- panama[panama$name == "Bocas del Toro",]
+```
+
+
+
+```{r}
+# str_name<-'../../../../Dropbox/MPI/Phyllostomus/Fieldwork/Data/NaturalEarthData/GRAY_HR_SR_OB_DR.tif' 
+# world=raster(str_name)
+# 
+# Bocas <- crop(world, extent(bocas))
+# 
+# plot(Bocas)
+# 
+# world_spdf <- as(world, "SpatialPixelsDataFrame")
+# world_df <- as.data.frame(world_spdf)
+# colnames(world_df) <- c("value", "x", "y")
+# 
+# ggplot(data = bocas) +
+#     geom_sf() 
 ```
 
 # get technosmart data
@@ -68,6 +94,19 @@ pj <- ld(p.traj)
 
 ```
 
+
+```{r}
+
+Bocas <- raster("D:/Bocas_2022_03_07_psscene_analytic_sr_udm2/files/20220307_153438_48_248e_3B_AnalyticMS_SR_harmonized_clip.tif")
+```
+
+
+```{r}
+plot(Bocas)
+points(df$x, df$y, col = as.factor(df$ID))
+```
+
+
 # First Passage Time
 
 ```{r}
@@ -81,6 +120,7 @@ names(varfpt) <- radii
 Radius <- as.numeric(names(which.max(colMeans(as.matrix(varfpt), na.rm = TRUE))))
 
 ```
+
 
 ### plot radius
 ```{r}
@@ -147,11 +187,14 @@ summary(Bats)
 
 ```
 # plot tracks
+make pdf
+
+
 ```{r}
 
 IDs <- unique(Bats$burst)
 i = 14
-
+pdf(file = "../../../../Dropbox/MPI/Phyllostomus/Fieldwork/Plots/technosmart_tracks_simple.pdf")
 for(i in 1:length(IDs)){
   b <- Bats[which(Bats$burst == IDs[i]),]
   # plot(b$x, b$y, col = b$FPT01+1,
@@ -167,28 +210,16 @@ for(i in 1:length(IDs)){
   # ggplot(b[30:100,], aes(x,y,col = FPT))+geom_tile
 
 }
+dev.off()
+
+
+
 
 ```
-# plot level plot FPT
+# Hist FPT
 ```{r}
 
-# create data
-set.seed(1) 
-data <- data.frame(x = rnorm(100), y = rnorm(100)) 
-data$z <- with(data, x * y + rnorm(100, sd = 1)) 
- 
-# showing data points on the same color scale 
-levelplot(z ~ x * y, data, 
-          panel = panel.levelplot.points, cex = 1.2
-    ) + 
-    layer_(panel.2dsmoother(..., n = 200))
-
 Bats$FPT %>% hist(breaks = 500, xlim = c(0,1000))
-levelplot(FPT~x*y, data = Bats[Bats$FPT > 200 & Bats$x > 350000,],
-          panel = panel.levelplot.points, cex = 1)+
-  layer_(panel.2dsmoother(...,n = 200))
-
-
 
 ```
 # rasterize FPT
@@ -196,7 +227,8 @@ levelplot(FPT~x*y, data = Bats[Bats$FPT > 200 & Bats$x > 350000,],
 ###############################
 # rasterize points
 ###############################
-high_fpt <- Bats[which(Bats$FPT > 100),] # & Bats$x < 350000),]
+## Ilsa Colon
+high_fpt <- Bats[which(Bats$FPT > 100 & Bats$x > 350000 & Bats$y > 1029801),]
 
 r <- raster(ncols=2000, nrows=2000)
 r <- projectExtent(r, projUTM)
@@ -211,20 +243,6 @@ plot(fpt)
 FPT <- projectRaster(fpt, crs = proj.ll)
 plot(FPT)
 values(FPT) <- log(values(FPT))
-```
-
-```{r}
-# devtools::install_github("ropensci/rnaturalearthhires")
-p_load(archdata, sp, leaflet, rgdal, rgeos, spatstat, rworldmap, 
-       ggmap, gstat, leaflet, mapview, raster, rnaturalearth, rnaturalearthdata)
-
-```
-
-
-```{r}
-panama <- ne_countries(country = "Panama", scale = 10)
-panama <- ne_states(country = "Panama")
-bocas <- panama[panama$name == "Bocas del Toro",]
 ```
 
 
