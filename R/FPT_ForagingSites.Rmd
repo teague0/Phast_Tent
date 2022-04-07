@@ -95,17 +95,24 @@ pj <- ld(p.traj)
 ```
 
 
+# load Bocas
 ```{r}
+# m <- brick("../../../Dropbox/MPI/Phyllostomus/Fieldwork/Data/Bocas.tif")
+m_crop <- crop(m, extent(po))
 
-Bocas <- raster("D:/Bocas_2022_03_07_psscene_analytic_sr_udm2/files/20220307_153438_48_248e_3B_AnalyticMS_SR_harmonized_clip.tif")
-```
-
-
-```{r}
-plot(Bocas)
+plotRGB(m_crop,
+        r = 3, g = 2, b = 1,
+        stretch = "lin",
+        axes = TRUE,
+        main = "RGB composite image\n Planet Bands 3,2,1")
 points(df$x, df$y, col = as.factor(df$ID))
-```
 
+```
+## crop raster to changuinola, isla colon, and Isla Cristobal
+## crop raster to foraging sites
+```{r}
+
+```
 
 # First Passage Time
 
@@ -213,9 +220,36 @@ for(i in 1:length(IDs)){
 dev.off()
 
 
+```
 
+### plot tracks with basemap raster
+```{r}
+
+# IDs <- unique(Bats$burst)
+# i = 1
+# pdf(file = "../../../../Dropbox/MPI/Phyllostomus/Fieldwork/Plots/technosmart_tracks_simple.pdf")
+# for(i in 1:length(IDs)){
+#   b <- Bats[which(Bats$burst == IDs[i]),]
+#   # plot(b$x, b$y, col = b$FPT01+1,
+#   #      asp = 1)
+#   pb <- SpatialPoints(b[,c("x", "y")], proj4string=projUTM)
+#   plot(pb)
+#   m_bat <- crop(m, extent(pb))
+#   
+#   plotRGB(m_crop,
+#         r = 3, g = 2, b = 1,
+#         stretch = "lin",
+#         axes = TRUE,
+#         main = IDs[i])
+#   points(b$x, b$y, type = "o", col = rgb(1,0,0,.2))
+# 
+#   # ggplot(b[30:100,], aes(x,y,col = FPT))+geom_tile
+# 
+# }
+# dev.off()
 
 ```
+
 # Hist FPT
 ```{r}
 
