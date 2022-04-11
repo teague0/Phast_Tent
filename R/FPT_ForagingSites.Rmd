@@ -67,7 +67,11 @@ for(i in 1:length(gps_files)){
 aj$time <- aj$timestamp %>% dmy_hms
 
 plot(aj$location_lon, aj$location_lat, asp = 1, col = as.factor(aj$tag_id))
+```
 
+
+```{r}
+aj$battery_v %>% plot
 ```
 
 
@@ -97,7 +101,7 @@ pj <- ld(p.traj)
 
 # load Bocas
 ```{r}
-# m <- brick("../../../Dropbox/MPI/Phyllostomus/Fieldwork/Data/Bocas.tif")
+m <- brick("../../../Dropbox/MPI/Phyllostomus/Fieldwork/Data/Bocas.tif")
 m_crop <- crop(m, extent(po))
 
 plotRGB(m_crop,
@@ -108,10 +112,25 @@ plotRGB(m_crop,
 points(df$x, df$y, col = as.factor(df$ID))
 
 ```
+
+
 ## crop raster to changuinola, isla colon, and Isla Cristobal
 ## crop raster to foraging sites
 ```{r}
 
+chang_ext <- extent(310809, 354875, 1028174, 1058001)
+crist_ext <- extent(351042, 363248, 1015500, 1028174)
+colon_ext <- extent(353000, 369000, 1028174, 1058001)
+
+m_chang <- crop(m, chang_ext)
+m_crist <- crop(m, crist_ext)
+m_colon <- crop(m, colon_ext)
+
+plotRGB(m_crist,
+        r = 3, g = 2, b = 1,
+        stretch = "lin",
+        axes = TRUE,
+        main = "RGB composite image\n Planet Bands 3,2,1")
 ```
 
 # First Passage Time
@@ -200,26 +219,35 @@ make pdf
 ```{r}
 
 IDs <- unique(Bats$burst)
-i = 14
-pdf(file = "../../../../Dropbox/MPI/Phyllostomus/Fieldwork/Plots/technosmart_tracks_simple.pdf")
-for(i in 1:length(IDs)){
-  b <- Bats[which(Bats$burst == IDs[i]),]
-  # plot(b$x, b$y, col = b$FPT01+1,
-  #      asp = 1)
+# i = 14
+# pdf(file = "../../../../Dropbox/MPI/Phyllostomus/Fieldwork/Plots/technosmart_tracks_simple.pdf")
+# for(i in 1:length(IDs)){
+#   b <- Bats[which(Bats$burst == IDs[i]),]
+#   # plot(b$x, b$y, col = b$FPT01+1,
+#   #      asp = 1)
+# 
+#   p <- ggplot(b, aes(x, y, col = log(FPT)))+geom_path()+
+#     geom_point(aes(size = FPT), shape = 21)+ ggtitle(IDs[i])+
+#     viridis::scale_color_viridis()+theme_minimal()+
+#     ylim(c(min(Bats$y),max(Bats$y)))+
+#     xlim(c(min(Bats$x),max(Bats$x)))
+#   print(p)
+# 
+#   # ggplot(b[30:100,], aes(x,y,col = FPT))+geom_tile
+# 
+# }
+# dev.off()
 
-  p <- ggplot(b, aes(x, y, col = log(FPT)))+geom_path()+
-    geom_point(aes(size = FPT), shape = 21)+ ggtitle(IDs[i])+
-    viridis::scale_color_viridis()+theme_minimal()+
-    ylim(c(min(Bats$y),max(Bats$y)))+
-    xlim(c(min(Bats$x),max(Bats$x)))
-  print(p)
 
-  # ggplot(b[30:100,], aes(x,y,col = FPT))+geom_tile
+```
 
-}
-dev.off()
-
-
+```{r}
+# use near infrared instead of red
+  plotRGB(m_colon,
+        r = 4, g = 2, b = 1,
+        stretch = "lin",
+        axes = TRUE,
+        main = IDs[i])
 ```
 
 ### plot tracks with basemap raster
@@ -261,15 +289,18 @@ Bats$FPT %>% hist(breaks = 500, xlim = c(0,1000))
 ###############################
 # rasterize points
 ###############################
-## Ilsa Colon
-high_fpt <- Bats[which(Bats$FPT > 100 & Bats$x > 350000 & Bats$y > 1029801),]
+## Ilsa San Cristobal
+crist_ext
+
+high_fpt <- Bats[which(Bats$FPT > 100),]
 
 r <- raster(ncols=2000, nrows=2000)
 r <- projectExtent(r, projUTM)
-extent(r) <- extent(min(high_fpt$x, na.rm = TRUE)-500, 
-                    max(high_fpt$x, na.rm = TRUE)+500, 
-                    min(high_fpt$y, na.rm = TRUE)-500, 
-                    max(high_fpt$y, na.rm = TRUE)+500)
+extent(r) <- crist_ext
+# extent(r) <- extent(min(high_fpt$x, na.rm = TRUE)-500, 
+#                     max(high_fpt$x, na.rm = TRUE)+500, 
+#                     min(high_fpt$y, na.rm = TRUE)-500, 
+#                     max(high_fpt$y, na.rm = TRUE)+500)
 xy <- cbind(high_fpt$x, high_fpt$y)
 r
 fpt <- rasterize(xy, r, high_fpt$FPT, fun=sum)
@@ -281,7 +312,6 @@ values(FPT) <- log(values(FPT))
 
 
 ```{r}
-m1 <- mapview(bocas, color = "gray10", alpha.regions = 0)
 
 spplot(FPT)
 fpt_contour <- rasterToContour(FPT, nlevels = 5)
@@ -291,22 +321,19 @@ p_spat <-  SpatialPointsDataFrame(coords = df[,c("location_lon", "location_lat")
                                   data = df,
                                   #data = df[,c(1,7,9,11:15,17,30,40)], 
                                    proj4string = proj.ll)
-p39 <- SpatialPointsDataFrame(coords = df[df$ID == "PH_TS_039_S2_2022-03-15",
-                                          c("location_lon", "location_lat")], 
-                                  data = df[df$ID == "PH_TS_039_S2_2022-03-15",],
-                                  #data = df[,c(1,7,9,11:15,17,30,40)], 
-                                   proj4string = proj.ll)
+# p39 <- SpatialPointsDataFrame(coords = df[df$ID == "PH_TS_039_S2_2022-03-15",
+#                                           c("location_lon", "location_lat")], 
+#                                   data = df[df$ID == "PH_TS_039_S2_2022-03-15",],
+#                                   #data = df[,c(1,7,9,11:15,17,30,40)], 
+#                                    proj4string = proj.ll)
 
 
-df$ID %>% unique
-plot(p_spat)
-plot(p39)
 ```
 
 ```{r}
 
-m2 <- mapview(p_spat, alpha.regions = 0.1)
-m39 <- mapview(p39, alpha.regions = 0.1)
+m2 <- mapview(p_spat, alpha.regions = 0.1, color = "red")
+# m39 <- mapview(p39, alpha.regions = 0.1)
 m3 <- mapview(FPT, alpha.regions = 0.50, na.color = "transparent")
 m4 <- mapview(fpt_contour, lwd = 0.5, color = "gray40")
 m2+m3
