@@ -18,9 +18,20 @@ p_load(data.table, dplyr, ggplot2, lubridate)
 ```{r}
 #acc <- fread("D:/TrackingDryseason/AJcave/movebankfiles/PH_ST_074_S1_acc.csv")
 acc <- fread("D:/TrackingDryseason/AJcave/PH_ST_014_S6.csv")
+acc <- fread("../../../FlightCage/Test/PH_FC_05_S5.csv")
 acc
 acc$time <- dmy_hms(acc$Timestamp)
+acc$localtime <- acc$time - 5*3600
+plot(acc$localtime, acc$`Battery (V)`)
+
 ```
+```{r}
+plot(acc$localtime, acc$`location-lat`)
+idx <- which(is.na(acc$`location-lat`))
+hour(acc$localtime[-idx]) 
+
+```
+
 
 
 ```{r}
@@ -31,7 +42,7 @@ acc$time %>% diff %>% as.numeric %>% plot()
 ```{r}
 # idx <- 1:
 idx <- 41000:43000
-idx <- 40000:45000
+idx <- 45000:100000
 idx <- 1:nrow(acc)
 with(acc[idx,], plot(time, X, type = "l", col = rgb(0,0,1,.2)))
 with(acc, lines(time, Y, type = "l", col = rgb(1,0,0,.2)))
