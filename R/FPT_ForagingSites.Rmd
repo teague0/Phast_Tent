@@ -22,8 +22,8 @@ projUTM <- CRS("+proj=utm +zone=17 +ellps=GRS80 +datum=NAD83 +units=m +no_defs")
 
 # load data
 ```{r}
-# load("../../../../Dropbox/MPI/Phyllostomus/Fieldwork/Data/results_part1.rdata")
-# load("../../../../Dropbox/MPI/Phyllostomus/Fieldwork/Data/phastmove.rdata")
+load("../../../../Dropbox/MPI/Phyllostomus/Fieldwork/Data/results_part1.rdata")
+load("../../../../Dropbox/MPI/Phyllostomus/Fieldwork/Data/phastmove.rdata")
 # inf <- read.delim("../../../../Dropbox/MPI/Phyllostomus/Fieldwork/Data/Greater spear-nosed bat (Phyllostomus hastatus) in Bocas del Toro 2021-2022-reference-data.csv", header=T, sep=',', as.is=T)
 ```
 
@@ -54,7 +54,7 @@ bocas <- panama[panama$name == "Bocas del Toro",]
 
 # get technosmart data
 ```{r}
-technosmart <- "D:/TrackingDryseason/"
+technosmart <- "F:/TrackingDryseason/"
 gps_files <- list.files(path = technosmart, pattern = "*gps.csv", full.names = TRUE, recursive = TRUE)
 
 aj <- data.table()
@@ -69,6 +69,16 @@ aj$time <- aj$timestamp %>% dmy_hms
 plot(aj$location_lon, aj$location_lat, asp = 1, col = as.factor(aj$tag_id))
 
 ```
+# merge technosmart and vesper tracks
+```{r}
+move.df$location_lon <- move.df$location_long
+names(aj[,c(1,7,8,3,4,2)])
+names(move.df[,c(1,13, 55, 25, 26, 17)])
+a <- aj[,c(1,7,8,3,4,2)] %>% as.data.table()
+a$timestamp <- dmy_hms(a$timestamp)
+b <- move.df[,c(1,13, 55, 25, 26, 17)]
+df <- rbind(a,b)
+```
 
 
 # Create traj  
@@ -77,7 +87,7 @@ plot(aj$location_lon, aj$location_lat, asp = 1, col = as.factor(aj$tag_id))
 # phast <- phast[phast$location_lon > -90,]
 # df <- as.data.frame(phast)
 
-df <- aj
+# df <- aj
 # df$location_lat <-  df$location.lat
 # df$location_lon <- df$location.lon
 
@@ -97,13 +107,7 @@ pj <- ld(p.traj)
 
 ```{r}
 
-Bocas <- raster("D:/Bocas_2022_03_07_psscene_analytic_sr_udm2/files/20220307_153438_48_248e_3B_AnalyticMS_SR_harmonized_clip.tif")
-```
-
-
-```{r}
-plot(Bocas)
-points(df$x, df$y, col = as.factor(df$ID))
+plot(df$x, df$y, col = as.factor(df$ID))
 ```
 
 
@@ -111,7 +115,7 @@ points(df$x, df$y, col = as.factor(df$ID))
 
 ```{r}
 # Determine Optimal Radius
-radii <- seq(15, 300, by = 15)
+radii <- seq(5, 300, by = 5)
 fpts <- fpt(p.traj, radii, units = "seconds")
 
 varfpt <- varlogfpt(fpts, graph = F)
