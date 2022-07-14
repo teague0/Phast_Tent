@@ -1,0 +1,147 @@
+---
+title: "ACC DDMT Event Filter"
+output: html_document
+date: "2022-07-14"
+---
+
+```{r}
+pacman::p_load(data.table, tidyverse, dplyr, ggplot2, lubridate,
+               janitor)
+```
+
+```{r}
+df <- fread("../../../Desktop/DDMT_export/PH_ST_11/TestExportSplitList_continuous_export_split#10_10.txt") %>% clean_names
+df <- df[,c(1:5,7:11,17:22)]
+```
+
+# Find all the 
+```{r}
+plot(df$acc_z_sm)
+```
+
+
+# flying
+```{r}
+df$datetime <- dmy_hms(paste0(df$date, " ", df$time_hh_mm_ss_ddd))
+f <- df[which(df$acc_z_sm > 0.5),]
+```
+
+## plot marked events
+```{r}
+with(df[60000:120000,], plot(datetime, acc_z, type = "l"))
+points(f$datetime[f$marked_event == 1], 
+       y = rep(1, length(which(f$marked_event == 1))), 
+       col = 2,
+       cex = .5)
+```
+
+# decide if individual bouts are true foraging events
+
+## what is the distribution of bouts?
+```{r}
+# run length encoding
+r <- rle(f$marked_event)
+
+r$lengths[r$values == 1] %>% hist(breaks = 100)
+r$lengths[r$values == 1] %>% summary
+```
+Looks like most foraging bouts are a single point long, which is too short to include.
+
+What about events that have only a few points between them? Should we include those?
+```{r}
+r$lengths[r$values == 0] %>% hist(breaks = 1000, xlim = c(0,100))
+length(which(r$values <= 5))
+```
+
+Let's fill in the gaps and merge the short breaks
+```{r}
+r
+```
+
+## remove short breaks in foraging events
+```{r}
+i = 5
+for(i in 1:length(r$lengths)){
+  if(r$values[i] == 0){
+    if(r$lengths[i] <= 5){
+      # what to do with first and last events?
+      try(start <- sum(r$lengths[1:(i-1)])+1)
+      if(i == 1) start <- 1
+      end <- sum(r$lengths[1:i])
+      tt <- f$marked_event[start:end] %>% table
+      # relabel events as foraging
+      if(tt <= 5){
+        f$marked_event[start:end] <- 1
+      }
+    }
+  }
+}
+
+```
+
+## rerun run length encoding with fewer short breaks in foraging events
+```{r}
+r <- rle(f$marked_event)
+r$lengths[r$values == 0] %>% hist(breaks = 1000, xlim = c(0,100))
+```
+
+## remove short and long foraging events
+Let's say that foraging is between half a second to 2 seconds long, so we will filter out everything that is less than 5 and greater than 50 (given 25 Hz sampling rate).
+
+```{r}
+i = 1
+for(i in 1:length(r$lengths)){
+  if(r$values[i] == 1){
+    if(r$lengths[i] < 5 | r$lengths[i] > 50){
+      # what to do with first and last events?
+      start <- {}
+      end <- {}
+      try(start <- sum(r$lengths[1:(i-1)])+1)
+      if(i == 1) start <- 1
+      end <- sum(r$lengths[1:i])
+      tt <- f$marked_event[start:end] %>% table
+      # relabel events as not foraging
+      if(tt < 12 | tt > 50){
+        f$marked_event[start:end] <- 0
+      }
+    }
+  }
+}
+
+```
+# recalc rle
+```{r}
+r <- rle(f$marked_event)
+r$lengths[which(r$values == 1)] %>% hist(breaks = 100)
+```
+
+# plot updated marked events
+```{r}
+with(df[110000:114000,], #[73000:74000,], #[60000:120000,], 
+     plot(datetime, acc_z+2, type = "o",
+          cex = 0.1,
+          ylim = c(-1,5), col = rgb(0,0,0,.5)))
+lines(df$datetime, df$ve_dba, cex = .1, col = rgb(0,0.1,1,.5), type = "o")
+points(f$datetime[f$marked_event == 1], 
+       y = rep(1, length(which(f$marked_event == 1))), 
+       col = 2,
+       cex = 1)
+```
+# investigate marked events
+```{r}
+i = 2
+for(i in 1:length(r$lengths)){
+  if(r$values[i] == 1){
+      start <- {}
+      end <- {}
+      try(start <- sum(r$lengths[1:(i-1)])+1)
+      if(i == 1) start <- 1
+      end <- sum(r$lengths[1:i])
+      tt <- f$marked_event[start:end] %>% table
+      
+      summary(f[start:end,])
+    }
+  }
+}
+```
+
