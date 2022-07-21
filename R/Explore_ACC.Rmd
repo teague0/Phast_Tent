@@ -17,14 +17,17 @@ p_load(data.table, dplyr, ggplot2, lubridate)
 
 ```{r}
 #acc <- fread("D:/TrackingDryseason/AJcave/movebankfiles/PH_ST_074_S1_acc.csv")
-acc <- fread("D:/TrackingDryseason/AJcave/PH_ST_014_S6.csv")
-acc <- fread("../../../FlightCage/Test/PH_FC_05_S5.csv")
+acc <- fread("C:/Users/ehumre/Dropbox/MPI/Phyllostomus/Fieldwork/Data/Tracking/DrySeason/AJcave/DDMT/PH_ST_080.csv")
+acc <- fread("C:/Users/ehumre/Dropbox/MPI/Phyllostomus/Fieldwork/Data/FlightCage/PH_FC_01/PH_FC_01_S1.csv")
+# acc <- fread("../../../../Dropbox/MPI/Phyllostomus/Fieldwork/Data/Tracking/DrySeason/AJcave/DDMT/")
+# acc <- fread("../../../FlightCage/Test/PH_FC_05_S5.csv")
 acc
-acc$time <- dmy_hms(acc$Timestamp)
+acc$time <- dmy_hms(acc$timestamp)
 acc$localtime <- acc$time - 5*3600
 plot(acc$localtime, acc$`Battery (V)`)
 
 ```
+
 ```{r}
 plot(acc$localtime, acc$`location-lat`)
 idx <- which(is.na(acc$`location-lat`))
