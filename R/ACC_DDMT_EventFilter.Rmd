@@ -6,29 +6,30 @@ date: "2022-07-14"
 
 ```{r}
 pacman::p_load(data.table, tidyverse, dplyr, ggplot2, lubridate,
-               janitor)
+               janitor, zoo)
 ```
 
 ```{r}
-df <- fread("../../../Desktop/DDMT_export/PH_ST_11/TestExportSplitList_continuous_export_split#10_10.txt") %>% clean_names
-df <- df[,c(1:5,7:11,17:22)]
+df <- fread("../../../../Dropbox/MPI/Phyllostomus/Fieldwork/Data/Tracking/DrySeason/DDMT_export/PH_ST_18/Filename_continuous_export_split#1_4.txt") %>% clean_names
+# df <- df[,c(1:5,7:11,17:22)]
 ```
 
 # Find all the 
 ```{r}
-plot(df$acc_z_sm)
+plot(df$acc_z_sm, col = df$marked_event+1, cex = df$marked_event+0.1)
+abline(h = 0.2)
 ```
 
 
 # flying
 ```{r}
 df$datetime <- dmy_hms(paste0(df$date, " ", df$time_hh_mm_ss_ddd))
-f <- df[which(df$acc_z_sm > 0.5),]
+f <- df[which(df$acc_z_sm > 0.2),]
 ```
 
 ## plot marked events
 ```{r}
-with(df[60000:120000,], plot(datetime, acc_z, type = "l"))
+with(df[200000:300000,], plot(datetime, acc_z, type = "l"))
 points(f$datetime[f$marked_event == 1], 
        y = rep(1, length(which(f$marked_event == 1))), 
        col = 2,
@@ -49,7 +50,7 @@ Looks like most foraging bouts are a single point long, which is too short to in
 
 What about events that have only a few points between them? Should we include those?
 ```{r}
-r$lengths[r$values == 0] %>% hist(breaks = 1000, xlim = c(0,100))
+r$lengths[r$values == 0] %>% hist(breaks = 5000, xlim = c(0,100))
 length(which(r$values <= 5))
 ```
 
@@ -58,7 +59,7 @@ Let's fill in the gaps and merge the short breaks
 r
 ```
 
-## remove short breaks in foraging events
+## remove short breaks (<=5 samples) in foraging events
 ```{r}
 i = 5
 for(i in 1:length(r$lengths)){
@@ -82,7 +83,7 @@ for(i in 1:length(r$lengths)){
 ## rerun run length encoding with fewer short breaks in foraging events
 ```{r}
 r <- rle(f$marked_event)
-r$lengths[r$values == 0] %>% hist(breaks = 1000, xlim = c(0,100))
+r$lengths[r$values == 0] %>% hist(breaks = 5000, xlim = c(0,100))
 ```
 
 ## remove short and long foraging events
@@ -112,12 +113,12 @@ for(i in 1:length(r$lengths)){
 # recalc rle
 ```{r}
 r <- rle(f$marked_event)
-r$lengths[which(r$values == 1)] %>% hist(breaks = 100)
+r$lengths[which(r$values == 1)] %>% hist(breaks = 100, xlim = c(0,50))
 ```
 
 # plot updated marked events
 ```{r}
-with(df[110000:114000,], #[73000:74000,], #[60000:120000,], 
+with(df[280000:290000,], #[73000:74000,], #[60000:120000,], 
      plot(datetime, acc_z+2, type = "o",
           cex = 0.1,
           ylim = c(-1,5), col = rgb(0,0,0,.5)))
@@ -129,8 +130,9 @@ points(f$datetime[f$marked_event == 1],
 ```
 # investigate marked events
 ```{r}
-i = 2
-for(i in 1:length(r$lengths)){
+
+i = 4
+for(i in 1:40){#length(r$lengths)){
   if(r$values[i] == 1){
       start <- {}
       end <- {}
@@ -138,10 +140,101 @@ for(i in 1:length(r$lengths)){
       if(i == 1) start <- 1
       end <- sum(r$lengths[1:i])
       tt <- f$marked_event[start:end] %>% table
+      buff <- 50
+      
+      with(f[(start-buff):(end+buff),], 
+           plot(datetime, acc_z, type = "l", 
+                main = paste0(f$datetime[start], ", N = ", length(start:end))))
+      with(f[(start-buff):(end+buff),], lines(datetime, acc_z_sm, col = 2))
+      with(f[(start-buff):(end+buff),], lines(datetime, ve_dba, col = 3))
+      with(f[(start-buff):(end+buff),], lines(datetime, ve_dba_smoothed, col = 4))
+      abline(v = f$datetime[start], lty = 2)
+      abline(v = f$datetime[end], lty = 2)
+      legend("topleft", col = c(1:4), 
+             legend = c("Z", "Z_sm", "VeDBA", "VeDBA_sm"), 
+             lty = 1, cex = .75)
       
       summary(f[start:end,])
     }
   }
+
+```
+
+# remove events at the beginning and end
+These come from the transition to flying but don't represent true pauses
+
+
+
+## define a foraging bout
+### must have at least 60 seconds between the next foraging bout
+### must have a duration over 600 seconds
+```{r}
+f$difftime <- c(NA, f$datetime %>% diff)
+
+idx <- c(1, which(f$difftime > 60), nrow(f))
+i
+f$bout <- NA
+for(i in 1:(length(idx)-1)){
+  f$bout[idx[i]:(idx[i+1]-1)] <- i
 }
+tt <- f$bout %>% table
+f$bout[f$bout %in% which(tt < 600)] <- NA
+```
+
+# summarize data
+```{r}
+f %>% group_by(bout) %>% 
+  summarise(length = n(),
+            start = min(datetime),
+            end = max(datetime),
+            visits = length(rle(marked_event)$values==1))
+            
+f$ve_dba %>% 
+```
+
+# get wingbeat
+```{r}
+localMaxima <- function(x) {
+  # Use -Inf instead if x is numeric (non-integer)
+  y <- diff(c(-.Machine$integer.max, x)) > 0L
+  rle(y)$lengths
+  y <- cumsum(rle(y)$lengths)
+  y <- y[seq.int(1L, length(y), 2L)]
+  if (x[[1]] == x[[2]]) {
+    y <- y[-1]
+  }
+  y
+}
+
+
+```
+
+
+```{r}
+idx <- which(f$bout == 10)
+with(f[idx,], plot(datetime, acc_z, type = "l"))
+# with(f[idx[1:10],], points(datetime, acc_z))
+
+peaks <- localMaxima(f$acc_z[idx])
+diffpeaks <- diff(peaks)
+plot(f$datetime[peaks[-1]], diffpeaks)
+lines(f$datetime[peaks[-c(1:500, (length(peaks)-499):length(peaks))]], 
+      rollmean(as.zoo(diffpeaks), k = 1000), col = 2)
+
+hist(diffpeaks, breaks = 100)
+hz <- 1/(mean(diffpeaks)*0.04)
+with(f[idx[peaks],], points(datetime, acc_z, col = 2))
+
+length(idx[-1])
+length(diffpeaks)
+length(f$datetime[peaks[-c(1:499, (length(peaks)-499):length(peaks))]])
+length(rollmean(as.zoo(diffpeaks), k = 1000))
+```
+
+```{r}
+x <- c(1,2,9,9,2,1,1,5,5,1)
+localMaxima(x) #
+xz <- as.zoo(x)
+rollapply(xz, 3, function(x) which.max(x)==2)
 ```
 
