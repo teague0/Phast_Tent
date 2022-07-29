@@ -34,8 +34,6 @@ panama <- ne_states(country = "Panama", returnclass = "sf")
 bocas <- panama[panama$name == "Bocas del Toro",]
 ```
 
-
-
 ```{r}
 # str_name<-'../../../../Dropbox/MPI/Phyllostomus/Fieldwork/Data/NaturalEarthData/GRAY_HR_SR_OB_DR.tif' 
 # world=raster(str_name)
@@ -54,7 +52,7 @@ bocas <- panama[panama$name == "Bocas del Toro",]
 
 # get technosmart data
 ```{r}
-technosmart <- "F:/TrackingDryseason/"
+technosmart <- "I:/TrackingDryseason/"
 gps_files <- list.files(path = technosmart, pattern = "*gps.csv", full.names = TRUE, recursive = TRUE)
 
 aj <- data.table()
@@ -73,6 +71,7 @@ plot(aj$location_lon, aj$location_lat, asp = 1, col = as.factor(aj$tag_id))
 ```{r}
 aj$battery_v %>% plot
 ```
+
 # merge technosmart and vesper tracks
 ```{r}
 move.df$location_lon <- move.df$location_long
@@ -117,9 +116,9 @@ m_crop <- crop(m, extent(po))
 plotRGB(m_crop,
         r = 3, g = 2, b = 1,
         stretch = "lin",
-        axes = TRUE,
-        main = "RGB composite image\n Planet Bands 3,2,1")
-points(df$x, df$y, col = as.factor(df$ID))
+        axes = FALSE,
+        main = "")#"RGB composite image\n Planet Bands 3,2,1")
+points(df$x, df$y, col = as.factor(df$ID), cex = 0.2)
 
 
 plot(df$x, df$y, col = as.factor(df$ID))
