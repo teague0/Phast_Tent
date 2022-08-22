@@ -1,6 +1,9 @@
 library(pacman)
-p_load(tidyverse, ggplot2, raster, dplyr, sp, leaflet, leaflet.esri, ggpubr)
+p_load(tidyverse, ggplot2, raster, dplyr, sp, sf, 
+       leaflet, leaflet.esri, ggpubr)
 
+
+c.sf <- st_read("../../../Dropbox/MPI/Phyllostomus/")
 # c <- raster("C:/Users/Edward/Downloads/cluster_kmeans_k12.tif")
 c <- raster("C:/Users/Edward/Downloads/cluster_kmeans.tif")
 n <- raster::brick("C:/Users/Edward/Downloads/nicfi_changuinola.tif")

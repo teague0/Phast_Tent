@@ -27,8 +27,6 @@ for(j in 1:length(cycles)){
 
 plot(d,x, type = "o")
 
-
-
 x1 <- sin(seq(0,10*pi,length = 100))
 s1 <- localMaxima(x1)
 hz1 <- 1/(mean(diff(s1)))
@@ -39,11 +37,9 @@ s2 <- localMaxima(x2)
 hz2 <- 1/(mean(diff(s2)))
 hz2
 
-
 # simulate a change in frequencies
 
 # how much would we expect a bat's wingbeat frequency to change during the night?
-
 
 m2 = (f2/f1)^2*m1
 m2/m1 = (f2/f1)^2
@@ -55,6 +51,10 @@ m2 = 120
 f1 = 6
 sqrt(m2/m1)*f1 # 6.57
 
+f1 = 6.25
+f2 = 8.3
+m1 = 100
+m2 = (f2/f1)^2*m1
 
 
 library(pacman)
