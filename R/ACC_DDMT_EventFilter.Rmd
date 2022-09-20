@@ -4,20 +4,25 @@ output: html_document
 date: "2022-07-14"
 ---
 
+# load libraries
 ```{r}
 pacman::p_load(data.table, tidyverse, dplyr, ggplot2, lubridate,
                janitor, zoo)
 my_options <- options(digits.secs = 3) 
 ```
 
+# load data
 ```{r}
-df <- fread("../../../../Dropbox/MPI/Phyllostomus/DDMT/DDMT_export/PH_ST_18/Filename_continuous_export_split#1_4.txt") %>% clean_names
+# df <- fread("../../../../Dropbox/MPI/Phyllostomus/DDMT/DDMT_export/PH_ST_18/Filename_continuous_export_split#1_4.txt") %>% clean_names
+# df <- fread("../../../../Dropbox/MPI/Phyllostomus/DDMT/DDMT_export/PH_ST_80/Filename_continuous_export_split#1_0.txt") %>% clean_names
+df <- fread("../../../../Dropbox/MPI/Phyllostomus/DDMT/DDMT_export/PH_ST_80/Filename_continuous_export_split#11_10.txt") %>% clean_names
+
 # df <- df[,c(1:5,7:11,17:22)]
 ```
 
 # Find all the 
 ```{r}
-plot(df$acc_z_sm, col = df$marked_event+1, cex = df$marked_event+0.1)
+plot(df$ve_dba, col = df$marked_event+1, cex = df$marked_event+0.1)
 abline(h = 0.2)
 ```
 
@@ -26,7 +31,7 @@ abline(h = 0.2)
 ```{r}
 df$datetime <- as.POSIXct(paste0(df$date, " ", df$time_hh_mm_ss_ddd), 
                           format = "%d/%m/%Y %H:%M:%OS")
-f <- df[which(df$acc_z_sm > 0.2),]
+f <- df# [which(df$acc_z_sm > 0.2),]
 ```
 
 ## plot marked events
@@ -147,9 +152,10 @@ for(i in 1:40){#length(r$lengths)){
       with(f[(start-buff):(end+buff),], 
            plot(datetime, acc_z, type = "l", 
                 main = paste0(f$datetime[start], ", N = ", length(start:end))))
-      with(f[(start-buff):(end+buff),], lines(datetime, acc_z_sm, col = 2))
+      with(f[(start-buff):(end+buff),], lines(datetime, acc_z, col = 2))
+      with(f[(start-buff):(end+buff),], lines(datetime, acc_y, col = 5))
       with(f[(start-buff):(end+buff),], lines(datetime, ve_dba, col = 3))
-      with(f[(start-buff):(end+buff),], lines(datetime, ve_dba_smoothed, col = 4))
+      with(f[(start-buff):(end+buff),], lines(datetime, ve_sba_smoothed, col = 4))
       abline(v = f$datetime[start], lty = 2)
       abline(v = f$datetime[end], lty = 2)
       legend("topleft", col = c(1:4), 
@@ -161,6 +167,8 @@ for(i in 1:40){#length(r$lengths)){
   }
 
 ```
+
+add Y axis
 
 # remove events at the beginning and end
 These come from the transition to flying but don't represent true pauses
@@ -182,6 +190,12 @@ for(i in 1:(length(idx)-1)){
 tt <- f$bout %>% table
 f$bout[f$bout %in% which(tt < 600)] <- NA
 ```
+
+# save data
+```{r}
+save(f, df, file = "../../../../Dropbox/MPI/Phyllostomus/DDMT/DDMT_export/PH_ST_80/Filename_continuous_export_split#11_10.robj")
+```
+
 
 # summarize data
 ```{r}
