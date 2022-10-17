@@ -1,0 +1,79 @@
+---
+title: "Firetail_ACC"
+output: html_document
+date: "2022-09-16"
+---
+
+```{r}
+pacman::p_load(data.table, tidyverse, dplyr, ggplot2, lubridate,
+               janitor, zoo)
+my_options <- options(digits.secs = 3) 
+```
+
+```{r}
+load("../../../Dropbox/MPI/Phyllostomus/DDMT/DDMT_export/PH_ST_18/Filename_continuous_export_split#1_4.robj")
+ft <- fread("../../../Dropbox/MPI/Phyllostomus/Firetail/individual_7CDB4A2-annotated-samples.csv") %>% clean_names
+```
+
+
+```{r}
+with(df[100000:750000,], #[73000:74000,], #[60000:120000,], 
+     plot(datetime, acc_z+2, type = "o",
+          cex = 0.1,
+          ylim = c(-1,5), col = rgb(0,0,0,.5)))
+lines(df$datetime, df$ve_dba, cex = .1, col = rgb(0,0.1,1,.5), type = "o")
+points(f$datetime[f$marked_event == 1], 
+       y = rep(1, length(which(f$marked_event == 1))), 
+       col = 2,
+       cex = 1)
+```
+
+```{r}
+ft$layer <- "resting"
+ft$layer[!ft$annotation_layer_commuting == ""] <- "commuting"
+ft$layer[!ft$annotation_layer_flying == ""] <- "flying"
+# ft$layer[!ft$annotation_layer_unknown == ""] <- "unknown"
+
+table(ft$layer)
+# diff(ft$burst_start_timestamp)
+```
+
+
+```{r}
+
+with(df[100000:500000,], #[60000:120000,], 
+     plot(datetime+3600, acc_z+2, type = "o",
+          cex = 0.1,
+          ylim = c(-1,5), col = rgb(0,0,0,.1)))
+with(ft, points(burst_start_timestamp, layer %>% factor, 
+                        col = layer %>% factor))
+points(f$datetime[f$marked_event == 1]+3600, 
+       rep(0, length(which(f$marked_event == 1))), 
+       col = rgb(1,0,0,.4))
+```
+
+```{r}
+
+with(df[150000:300000,], #[60000:120000,], 
+     plot(datetime, acc_z+2, type = "o",
+          cex = 0.1,
+          ylim = c(-1,5), col = rgb(0,0,0,.5)))
+with(ft, points(burst_start_timestamp, factor(layer), cex = 0.3,
+       col = factor(layer), pch = 16, ylim = c(-3,6)))
+
+# table(ft$annotation_layer_perching)
+
+
+```
+
+
+
+```{r}
+
+with(ft[1:10000,], plot(timestamp, annotation_layer_flying %>% as.factor))
+with(ft[1:10000,], plot(timestamp, annotation_layer_commuting %>% as.factor))
+with(ft[1:10000,], plot(timestamp, annotation_layer_perching %>% as.factor))
+
+
+```
+

@@ -4,28 +4,44 @@ output: html_document
 date: "2022-07-14"
 ---
 
+# load libraries
 ```{r}
 pacman::p_load(data.table, tidyverse, dplyr, ggplot2, lubridate,
                janitor, zoo)
+my_options <- options(digits.secs = 3) 
 ```
 
+# load data
 ```{r}
-df <- fread("../../../../Dropbox/MPI/Phyllostomus/Fieldwork/Data/Tracking/DrySeason/DDMT_export/PH_ST_18/Filename_continuous_export_split#1_4.txt") %>% clean_names
+# df <- fread("../../../../Dropbox/MPI/Phyllostomus/DDMT/DDMT_export/PH_ST_18/Filename_continuous_export_split#1_4.txt") %>% clean_names
+# df <- fread("../../../../Dropbox/MPI/Phyllostomus/DDMT/DDMT_export/PH_ST_80/Filename_continuous_export_split#1_0.txt") %>% clean_names
+df <- fread("../../../../Dropbox/MPI/Phyllostomus/DDMT/DDMT_export/PH_ST_80/Filename_continuous_export_split#11_10.txt") %>% clean_names
+
 # df <- df[,c(1:5,7:11,17:22)]
 ```
 
 # Find all the 
 ```{r}
+<<<<<<< HEAD
 df$datetime <- dmy_hms(paste0(df$date, " ", df$time_hh_mm_ss_ddd))
 plot(df$acc_z_sm, col = df$marked_event+1, cex = df$marked_event+0.1)
+=======
+plot(df$ve_dba, col = df$marked_event+1, cex = df$marked_event+0.1)
+>>>>>>> 5b60142b395fdbce03f5ef2fb4bf14b35459edda
 abline(h = 0.2)
 ```
 
 
 # flying
 ```{r}
+<<<<<<< HEAD
 
 f <- df[which(df$acc_z_sm > 0.2),]
+=======
+df$datetime <- as.POSIXct(paste0(df$date, " ", df$time_hh_mm_ss_ddd), 
+                          format = "%d/%m/%Y %H:%M:%OS")
+f <- df# [which(df$acc_z_sm > 0.2),]
+>>>>>>> 5b60142b395fdbce03f5ef2fb4bf14b35459edda
 ```
 
 ## plot marked events
@@ -146,9 +162,10 @@ for(i in 41:80){#length(r$lengths)){
       with(f[(start-buff):(end+buff),], 
            plot(datetime, acc_z, type = "l", 
                 main = paste0(f$datetime[start], ", N = ", length(start:end))))
-      with(f[(start-buff):(end+buff),], lines(datetime, acc_z_sm, col = 2))
+      with(f[(start-buff):(end+buff),], lines(datetime, acc_z, col = 2))
+      with(f[(start-buff):(end+buff),], lines(datetime, acc_y, col = 5))
       with(f[(start-buff):(end+buff),], lines(datetime, ve_dba, col = 3))
-      with(f[(start-buff):(end+buff),], lines(datetime, ve_dba_smoothed, col = 4))
+      with(f[(start-buff):(end+buff),], lines(datetime, ve_sba_smoothed, col = 4))
       abline(v = f$datetime[start], lty = 2)
       abline(v = f$datetime[end], lty = 2)
       legend("topleft", col = c(1:4), 
@@ -161,11 +178,15 @@ for(i in 41:80){#length(r$lengths)){
 
 ```
 
+<<<<<<< HEAD
 ```{r}
 f$n <- lapply(seq_along(1:length(r$lengths)), function(i){
   return(rep(r$lengths[i], r$lengths[i]))
 }) %>% unlist
 ```
+=======
+add Y axis
+>>>>>>> 5b60142b395fdbce03f5ef2fb4bf14b35459edda
 
 # remove events at the beginning and end
 These come from the transition to flying but don't represent true pauses
@@ -188,6 +209,12 @@ tt <- f$bout %>% table
 f$bout[f$bout %in% which(tt < 600)] <- NA
 ```
 
+# save data
+```{r}
+save(f, df, file = "../../../../Dropbox/MPI/Phyllostomus/DDMT/DDMT_export/PH_ST_80/Filename_continuous_export_split#11_10.robj")
+```
+
+
 # summarize data
 ```{r}
 f %>% group_by(bout) %>% 
@@ -200,6 +227,57 @@ f$ve_dba %>%
 ```
 
 # get wingbeat
+## gundog peaks
+```{r}
+source("Gundog.Peaks.R")
+wb <- Gundog.Peaks(TS = f$datetime, x = f$acc_z, thresh = 10)
+wb
+hist(wb$Peak.Period %>% as.numeric, breaks = 1000000, xlim = c(0, 0.3))
+
+with(wb[wb$Peak.Amplitude > 2,], plot(Timestamp, Peak.Period, ylim = c(0, 0.3), alpha = 0.1))
+plot(wb$Peak.Period, wb$Peak.Amplitude, xlim = c(0,4))
+wb$Timestamp
+
+ggplot(wb[wb$Peak.Period < 0.5,], aes(Timestamp, Peak.Period))+
+  geom_point()+geom_smooth()
+```
+# Check how well it works
+```{r}
+with(f[2500:3000,], plot(datetime, acc_z, type = "l"))
+with(wb, points(wb$Timestamp, wb$Peak.Amplitude, col = 2))
+
+hist(wb$Peak.Period %>% as.numeric, xlim = c(0,0.5), breaks = 1000000)
+
+wb$median_period <- rollmedian(wb$Peak.Period, k = 51, fill = NA)
+```
+
+
+```{r}
+z <- smooth.spline(f$acc_z[2500:2700], spar = 0.3, all.knots = TRUE)
+with(f[2500:2700,], plot(acc_z, type = "l"))
+lines(z, col = 2)
+```
+
+What is the range of possible wingbeats detectable?
+```{r}
+table(round(wb$Peak.Period, 3))[1:6]
+
+1/.12 # 8.3 Hz
+1/.16 # 6.25 Hz
+1/.2 # 5 Hz
+
+
+f1 = 6.25
+f2 = 5
+m1 = 100
+m2 = (f2/f1)^2*m1 
+# to go from 6.25 to 8.3 Hz, the bat would need to gain 76g
+# to go from 6.25 to 5 Hz, the bat would need to lose 36g
+
+```
+
+
+
 ```{r}
 localMaxima <- function(x) {
   # Use -Inf instead if x is numeric (non-integer)

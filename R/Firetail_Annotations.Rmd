@@ -1,0 +1,83 @@
+---
+title: "Firetail Annotations"
+output: html_document
+date: "2022-10-17"
+---
+# load libraries
+```{r}
+pacman::p_load(data.table, tidyverse, dplyr, ggplot2, lubridate,
+               janitor, zoo)
+my_options <- options(digits.secs = 3) 
+```
+
+#Compare two models on the same bat
+## 7CDB4A2
+```{r}
+ftm <- fread("../../../../ownCloud/Firetail/Model_7CE02AF_main/7CDB4A2/individual_7CDB4A2-annotated-bursts-gps.csv") %>% clean_names
+
+ft <- fread("../../../../ownCloud/Firetail/Model_7CDB4A2/7CDB4A2/individual_7CDB4A2-annotated-bursts-gps.csv") %>% clean_names
+```
+
+## 7CDBB60
+```{r}
+ftm <- fread("../../../../ownCloud/Firetail/Model_7CE02AF_main/7CDBB60/individual_7CDBB60-annotated-bursts-gps.csv") %>% clean_names
+
+ft <- fread("../../../../ownCloud/Firetail/Model_7CDB4A2/7CDBB60/individual_7CDBB60-annotated-bursts-gps.csv") %>% clean_names
+```
+
+## 7CE02AF
+```{r}
+ftm <- fread("../../../../ownCloud/Firetail/Model_7CE02AF_main/7CE02AF/individual_7CE02AF-annotated-bursts-gps.csv") %>% clean_names
+
+ft <- fread("../../../../ownCloud/Firetail/Model_7CDB4A2/7CE02AF/") %>% clean_names
+```
+
+# clean and calculate overlap
+```{r}
+
+ftm$annotation_layer_commuting[ftm$annotation_layer_commuting == ""] <- NA
+ft$annotation_layer_commuting[ft$annotation_layer_commuting == ""] <- NA
+ftm$annotation_layer_foraging[ftm$annotation_layer_foraging == ""] <- NA
+ft$annotation_layer_foraging[ft$annotation_layer_foraging == ""] <- NA
+ftm$annotation_layer_resting[ftm$annotation_layer_resting == ""] <- NA
+ft$annotation_layer_resting[ft$annotation_layer_resting == ""] <- NA
+ftm$annotation_layer_unknown[ftm$annotation_layer_unknown == ""] <- NA
+ft$annotation_layer_unknown[ft$annotation_layer_unknown == ""] <- NA
+```
+
+# calculate overlap
+```{r}
+print("Commuting")
+ftm_c <- table(ftm$annotation_layer_commuting) %>% na.omit 
+ft_c <- table(ft$annotation_layer_commuting) %>% na.omit 
+ftm_in_ft_c <- which(!is.na(ftm$annotation_layer_commuting)) %in%
+  which(!is.na(ft$annotation_layer_commuting != "")) %>% sum
+ftm_in_ft_c/sum(ftm_c) #87.5 % overlap
+ft_in_ftm_c <- which(!is.na(ft$annotation_layer_commuting)) %in%
+  which(!is.na(ftm$annotation_layer_commuting != "")) %>% sum
+ft_in_ftm_c/sum(ft_c) #83.9 % overlap
+
+print("Foraging")
+ftm_f <- table(ftm$annotation_layer_foraging) %>% na.omit
+ft_f <- table(ft$annotation_layer_foraging) %>% na.omit
+ftm_in_ft_f <- which(!is.na(ftm$annotation_layer_foraging)) %in%
+  which(!is.na(ft$annotation_layer_foraging != "")) %>% sum
+ftm_in_ft_f/sum(ftm_f) #68.9 % overlap
+ft_in_ftm_f <- which(!is.na(ft$annotation_layer_foraging)) %in%
+  which(!is.na(ftm$annotation_layer_foraging != "")) %>% sum
+ft_in_ftm_f/sum(ft_f) #76.2 % overlap
+
+print("Resting")
+ftm_r <- table(ftm$annotation_layer_resting) %>% na.omit %>% sum
+ft_r <- table(ft$annotation_layer_resting) %>% na.omit %>% sum
+ftm_in_ft_r <- which(!is.na(ftm$annotation_layer_resting)) %in%
+  which(!is.na(ft$annotation_layer_resting != "")) %>% sum
+ftm_in_ft_r/sum(ftm_r) #99.9 % overlap
+ft_in_ftm_r <- which(!is.na(ft$annotation_layer_resting)) %in%
+  which(!is.na(ftm$annotation_layer_resting != "")) %>% sum
+ft_in_ftm_r/sum(ft_r) #99.8 % overlap
+```
+
+
+
+
