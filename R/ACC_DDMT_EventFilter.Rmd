@@ -22,16 +22,26 @@ df <- fread("../../../../Dropbox/MPI/Phyllostomus/DDMT/DDMT_export/PH_ST_80/File
 
 # Find all the 
 ```{r}
+<<<<<<< HEAD
+df$datetime <- dmy_hms(paste0(df$date, " ", df$time_hh_mm_ss_ddd))
+plot(df$acc_z_sm, col = df$marked_event+1, cex = df$marked_event+0.1)
+=======
 plot(df$ve_dba, col = df$marked_event+1, cex = df$marked_event+0.1)
+>>>>>>> 5b60142b395fdbce03f5ef2fb4bf14b35459edda
 abline(h = 0.2)
 ```
 
 
 # flying
 ```{r}
+<<<<<<< HEAD
+
+f <- df[which(df$acc_z_sm > 0.2),]
+=======
 df$datetime <- as.POSIXct(paste0(df$date, " ", df$time_hh_mm_ss_ddd), 
                           format = "%d/%m/%Y %H:%M:%OS")
 f <- df# [which(df$acc_z_sm > 0.2),]
+>>>>>>> 5b60142b395fdbce03f5ef2fb4bf14b35459edda
 ```
 
 ## plot marked events
@@ -58,7 +68,7 @@ Looks like most foraging bouts are a single point long, which is too short to in
 What about events that have only a few points between them? Should we include those?
 ```{r}
 r$lengths[r$values == 0] %>% hist(breaks = 5000, xlim = c(0,100))
-length(which(r$values <= 5))
+# length(which(r$values <= 5))
 ```
 
 Let's fill in the gaps and merge the short breaks
@@ -100,7 +110,7 @@ Let's say that foraging is between half a second to 2 seconds long, so we will f
 i = 1
 for(i in 1:length(r$lengths)){
   if(r$values[i] == 1){
-    if(r$lengths[i] < 5 | r$lengths[i] > 50){
+    if(r$lengths[i] < 12 | r$lengths[i] > 50){
       # what to do with first and last events?
       start <- {}
       end <- {}
@@ -120,7 +130,7 @@ for(i in 1:length(r$lengths)){
 # recalc rle
 ```{r}
 r <- rle(f$marked_event)
-r$lengths[which(r$values == 1)] %>% hist(breaks = 100, xlim = c(0,50))
+r$lengths[which(r$values == 1)] %>% hist(breaks = 100, xlim = c(0,70))
 ```
 
 # plot updated marked events
@@ -137,9 +147,9 @@ points(f$datetime[f$marked_event == 1],
 ```
 # investigate marked events
 ```{r}
-
+r$lengths[4]
 i = 4
-for(i in 1:40){#length(r$lengths)){
+for(i in 41:80){#length(r$lengths)){
   if(r$values[i] == 1){
       start <- {}
       end <- {}
@@ -147,7 +157,7 @@ for(i in 1:40){#length(r$lengths)){
       if(i == 1) start <- 1
       end <- sum(r$lengths[1:i])
       tt <- f$marked_event[start:end] %>% table
-      buff <- 50
+      buff <- 20
       
       with(f[(start-buff):(end+buff),], 
            plot(datetime, acc_z, type = "l", 
@@ -168,7 +178,15 @@ for(i in 1:40){#length(r$lengths)){
 
 ```
 
+<<<<<<< HEAD
+```{r}
+f$n <- lapply(seq_along(1:length(r$lengths)), function(i){
+  return(rep(r$lengths[i], r$lengths[i]))
+}) %>% unlist
+```
+=======
 add Y axis
+>>>>>>> 5b60142b395fdbce03f5ef2fb4bf14b35459edda
 
 # remove events at the beginning and end
 These come from the transition to flying but don't represent true pauses
