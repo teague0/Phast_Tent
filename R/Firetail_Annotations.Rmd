@@ -176,11 +176,30 @@ for(i in 2:length(bats)){
 }
 ```
 
-
+# how do behavioral groups agree? 
 ```{r}
 myfreq <- sapply(firetail_annotations, function(x) table(factor(x, levels=unique(unlist(firetail_annotations))[c(25,26,27,29)], ordered=TRUE)))
 
 myfreq#/24 %>% round(.,2)
+```
+# majority rule
+```{r}
+i = 2
+SOM_majority <- data.frame(SOM = rep(NA, 25), behav = NA)
+for(i in 2:ncol(myfreq)){
+  SOM_majority$SOM[i-1] <- colnames(myfreq)[i]
+  SOM_majority$behav[i-1] <-  names(which.max(myfreq[,i]))  
+}
+
+```
+
+
+```{r}
+firetail_ann_freq[,2:26] %>% colMeans(na.rm = TRUE)
+firetail_ann_freq[,2:26]/rowSums(firetail_ann_freq[,2:26], na.rm = TRUE) -> temp
+
+temp_mlt <- melt(temp)
+ggplot(temp_mlt, aes(variable, value))+geom_violin()
 ```
 
 
