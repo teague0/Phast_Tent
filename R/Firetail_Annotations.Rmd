@@ -110,21 +110,83 @@ ft_overlap(ftm, ft)
 ## does l1-01 always show the same pattern?
 ```{r}
 bats <- list.dirs(path = "../../../../ownCloud/Firetail/Model_7CE02AF_main/")
-firetail_annotations <- list()
-i = 2
+firetail_annotations <- data.frame()
+firetail_ann_freq <- data.frame()
+i = 19
 for(i in 2:length(bats)){
   files <- list.files(bats[i], full.names = TRUE)
-  idx <- grep(pattern = "annotated-burst*-gps.csv", files)
+  idx <- grep(pattern = "annotated-bursts-gps.csv", files)
+  if(length(idx) == 0){idx <- grep(pattern = "annotated-burst-gps.csv", files)}
   ft <- fread(files[idx]) %>% clean_names()
-  l1 <- list()
-  l1[["commuting"]] <- table(ft$annotation_layer_commuting)
-  l1[["foraging"]] <- table(ft$annotation_layer_foraging) 
-  l1[["resting"]] <- table(ft$annotation_layer_resting) 
-  try({l1[["unknown"]] <- table(ft$annotation_layer_unknown)}) 
+  SOMs <- c(ft$annotation_layer_commuting %>% unique, 
+            ft$annotation_layer_foraging %>% unique, 
+            ft$annotation_layer_resting %>% unique) %>% unique
+  try({
+    SOMs <- c(SOMs, ft$annotation_layer_unknown) %>% unique
+  })
+  SOMs <- SOMs[order(SOMs)]
+  # frequency of events
+  df <- data.frame(matrix(ncol = length(SOMs), nrow = 1))
+  colnames(df) <- c("bat", SOMs[2:length(SOMs)])
   bat <- substr(bats[i], start = nchar(bats[i])-6, stop = nchar(bats[i]))
-  firetail_annotations[[bat]] <- l1
+  df$bat[1] <- bat
+  db <- df # behavioral class of SOMs
+  
+  commuting <- table(ft$annotation_layer_commuting)
+  foraging <- table(ft$annotation_layer_foraging) 
+  resting <- table(ft$annotation_layer_resting) 
+  try({unknown <- table(ft$annotation_layer_unknown)}) 
+  j = 2
+  for(j in 1:length(commuting)){
+    ID <- {}
+    idx <- {}
+    ID <- names(commuting[j])
+    idx <- which(names(df) == ID)
+    df[1,idx] <- commuting[j]
+    db[1,idx] <- "commuting"
+  }
+  for(j in 1:length(foraging)){
+    ID <- {}
+    idx <- {}
+    ID <- names(foraging[j])
+    idx <- which(names(df) == ID)
+    df[1,idx] <- foraging[j]
+    db[1,idx] <- "foraging"
+  }
+  for(j in 1:length(resting)){
+    ID <- {}
+    idx <- {}
+    ID <- names(resting[j])
+    idx <- which(names(df) == ID)
+    df[1,idx] <- resting[j]
+    db[1,idx] <- "resting"
+  }
+  try({
+    for(j in 1:length(unknown)){
+      ID <- {}
+      idx <- {}
+      ID <- names(unknown[j])
+      idx <- which(names(df) == ID)
+      df[1,idx] <- unknown[j]
+      db[1,idx] <- "unknown"
+  }
+  })
+  firetail_annotations <- rbindlist(list(firetail_annotations, db), fill = TRUE)
+  firetail_ann_freq <- rbindlist(list(firetail_ann_freq, df), fill = TRUE)
 }
-
 ```
 
+
+```{r}
+myfreq <- sapply(firetail_annotations, function(x) table(factor(x, levels=unique(unlist(firetail_annotations))[c(25,26,27,29)], ordered=TRUE)))
+
+myfreq#/24 %>% round(.,2)
+```
+
+
+# HMM to model transition probability matrix for all individuals
+```{r}
+library(pacman)
+p_load(mHMMbayes)
+```
 
