@@ -185,10 +185,52 @@ myfreq#/24 %>% round(.,2)
 # majority rule
 ```{r}
 i = 2
-SOM_majority <- data.frame(SOM = rep(NA, 25), behav = NA)
+SOM_majority <- data.frame(SOM = rep(NA, 25), behav = NA, count = NA)
 for(i in 2:ncol(myfreq)){
   SOM_majority$SOM[i-1] <- colnames(myfreq)[i]
-  SOM_majority$behav[i-1] <-  names(which.max(myfreq[,i]))  
+  SOM_majority$behav[i-1] <-  names(which.max(myfreq[,i]))
+  SOM_majority$count[i-1] <- max(myfreq[,i])
+}
+SOM_majority
+SOM_majority$behav %>% table
+```
+
+# update annotations and save files
+```{r}
+bats <- list.dirs(path = "../../../../ownCloud/Firetail/Model_7CE02AF_main/")
+i = 2
+for(i in 2:length(bats)){
+  files <- list.files(bats[i], full.names = TRUE)
+  idx <- grep(pattern = "annotated-bursts-gps.csv", files)
+  if(length(idx) == 0){idx <- grep(pattern = "annotated-burst-gps.csv", files)}
+  ft <- fread(files[idx]) %>% clean_names()
+  ft$commuting <- NA
+  ft$foraging <- NA
+  ft$resting <- NA
+  ft$unknown <- NA
+  for(j in 1:nrow(SOM_majority)){
+    idx_c <- grep(pattern = SOM_majority$SOM[j], x = ft$annotation_layer_commuting)
+    idx_f <- grep(pattern = SOM_majority$SOM[j], x = ft$annotation_layer_foraging)
+    idx_r <- grep(pattern = SOM_majority$SOM[j], x = ft$annotation_layer_resting)
+    try(idx_u <- grep(pattern = SOM_majority$SOM[j], x = ft$annotation_layer_unknown))
+    if(SOM_majority$behav[j] == "commuting"){
+      ft$commuting[c(idx_c, idx_f, idx_r)] <- SOM_majority$SOM[j]
+      try(ft$commuting[idx_u] <- SOM_majority$SOM[j])
+    }
+    if(SOM_majority$behav[j] == "foraging"){
+      ft$foraging[c(idx_c, idx_f, idx_r)] <- SOM_majority$SOM[j]
+      try(ft$foraging[idx_u] <- SOM_majority$SOM[j])
+    }
+    if(SOM_majority$behav[j] == "resting"){
+      ft$resting[c(idx_c, idx_f, idx_r)] <- SOM_majority$SOM[j]
+      try(ft$resting[idx_u] <- SOM_majority$SOM[j])
+    }
+    if(SOM_majority$behav[j] == "unknown"){
+      ft$unknown[c(idx_c, idx_f, idx_r)] <- SOM_majority$SOM[j]
+      try(ft$unknown[idx_u] <- SOM_majority$SOM[j])
+    }
+  }
+  data.table::fwrite(ft, file = files[idx])
 }
 
 ```
@@ -197,9 +239,21 @@ for(i in 2:ncol(myfreq)){
 ```{r}
 firetail_ann_freq[,2:26] %>% colMeans(na.rm = TRUE)
 firetail_ann_freq[,2:26]/rowSums(firetail_ann_freq[,2:26], na.rm = TRUE) -> temp
+temp$bat <- firetail_ann_freq$bat
+temp_mlt <- melt(temp, id.vars = "bat")
+temp_mlt$behav <- NA
+SOM_majority
+for(i in 1:nrow(SOM_majority)){
+  idx <- which(temp_mlt$variable == SOM_majority$SOM[i])
+  temp_mlt$behav[idx] <- SOM_majority$behav[i] 
+}
 
-temp_mlt <- melt(temp)
-ggplot(temp_mlt, aes(variable, value))+geom_violin()
+ggplot(temp_mlt, aes(y = value, x = variable))+geom_boxplot()+facet_wrap(~behav)
+
+temp_mlt %>% group_by(behav, bat) %>% dplyr::summarise(percent = sum(value)) -> temp_mlt_sum
+ggplot(temp_mlt_sum, aes(y = percent, x = behav, col = bat, group = behav))+
+  geom_boxplot(width = 0.75)+
+  geom_jitter()
 ```
 
 

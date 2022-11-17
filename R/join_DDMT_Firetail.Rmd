@@ -11,8 +11,9 @@ my_options <- options(digits.secs = 3)
 ```
 
 ```{r}
-load("../../../Dropbox/MPI/Phyllostomus/DDMT/DDMT_export/PH_ST_18/Filename_continuous_export_split#1_4.robj")
-ft <- fread("../../../Dropbox/MPI/Phyllostomus/Firetail/individual_7CDB4A2-annotated-samples.csv") %>% clean_names
+load("../../../../Dropbox/MPI/Phyllostomus/DDMT/DDMT_export/PH_ST_18/Filename_continuous_export_split#1_4.robj")
+# ft <- fread("../../../../Dropbox/MPI/Phyllostomus/Firetail/Model_7CDB4A2/7CDB4A2/individual_7CDB4A2-annotated-samples.csv") %>% clean_names
+fta <- fread("../../../../ownCloud/Firetail/Model_7CE02AF_main/7CDB4A2/individual_7CDB4A2-annotated-bursts-gps.csv")
 ```
 
 
@@ -29,44 +30,59 @@ points(f$datetime[f$marked_event == 1],
 ```
 
 ```{r}
-ft$layer <- "resting"
-ft$layer[!ft$annotation_layer_commuting == ""] <- "commuting"
-ft$layer[!ft$annotation_layer_flying == ""] <- "flying"
-# ft$layer[!ft$annotation_layer_unknown == ""] <- "unknown"
-
-table(ft$layer)
-# diff(ft$burst_start_timestamp)
-```
-
-
-```{r}
 
 with(df[100000:500000,], #[60000:120000,], 
      plot(datetime+3600, acc_z+2, type = "o",
           cex = 0.1,
           ylim = c(-1,5), col = rgb(0,0,0,.1)))
-with(ft, points(burst_start_timestamp, layer %>% factor, 
-                        col = layer %>% factor))
+# with(ft, points(burst_start_timestamp, layer %>% factor, 
+#                         col = layer %>% factor))
+points(fta$timestamp, y = as.numeric(!(fta$resting == "")), col = 4)
 points(f$datetime[f$marked_event == 1]+3600, 
        rep(0, length(which(f$marked_event == 1))), 
        col = rgb(1,0,0,.4))
 ```
 
+# find all wing pauses and see if it occurs exclusively during foraging
+## recalc rle
 ```{r}
-
-with(df[150000:300000,], #[60000:120000,], 
-     plot(datetime, acc_z+2, type = "o",
-          cex = 0.1,
-          ylim = c(-1,5), col = rgb(0,0,0,.5)))
-with(ft, points(burst_start_timestamp, factor(layer), cex = 0.3,
-       col = factor(layer), pch = 16, ylim = c(-3,6)))
-
-# table(ft$annotation_layer_perching)
-
-
+r <- rle(df$marked_event)
+r$lengths[which(r$values == 1)] %>% hist(breaks = 100, xlim = c(0,70))
 ```
 
+## investigate marked events
+```{r}
+r$lengths[4]
+i = 42
+for(i in 1:80){#length(r$lengths)){
+  if(r$values[i] == 1){
+      start <- {}
+      end <- {}
+      try(start <- sum(r$lengths[1:(i-1)])+1)
+      if(i == 1) start <- 1
+      end <- sum(r$lengths[1:i])
+      tt <- f$marked_event[start:end] %>% table
+      buff <- 100
+      
+      with(f[(start-buff):(end+buff),], 
+           plot(datetime, acc_z, type = "l", ylim = c(-4,4),
+                main = paste0(f$datetime[start], ", N = ", length(start:end))))
+      with(f[(start-buff):(end+buff),], lines(datetime, acc_z, col = 2))
+      with(f[(start-buff):(end+buff),], lines(datetime, acc_y, col = 5))
+      with(f[(start-buff):(end+buff),], lines(datetime, ve_dba, col = 3))
+      with(f[(start-buff):(end+buff),], lines(datetime, ve_sba_smoothed, col = 4))
+      points(fta$timestamp-3600, y = as.numeric(!(fta$foraging == "")), type = "o")
+      abline(v = f$datetime[start], lty = 2)
+      abline(v = f$datetime[end], lty = 2)
+      legend("topleft", col = c(1:4), 
+             legend = c("Z", "Z_sm", "VeDBA", "VeDBA_sm"), 
+             lty = 1, cex = .75)
+      
+      summary(f[start:end,])
+    }
+  }
 
+```
 
 ```{r}
 

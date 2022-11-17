@@ -22,26 +22,21 @@ df <- fread("../../../../Dropbox/MPI/Phyllostomus/DDMT/DDMT_export/PH_ST_80/File
 
 # Find all the 
 ```{r}
-<<<<<<< HEAD
 df$datetime <- dmy_hms(paste0(df$date, " ", df$time_hh_mm_ss_ddd))
-plot(df$acc_z_sm, col = df$marked_event+1, cex = df$marked_event+0.1)
-=======
+# plot(df$acc_z_sm, col = df$marked_event+1, cex = df$marked_event+0.1)
+
 plot(df$ve_dba, col = df$marked_event+1, cex = df$marked_event+0.1)
->>>>>>> 5b60142b395fdbce03f5ef2fb4bf14b35459edda
+
 abline(h = 0.2)
 ```
 
 
 # flying
 ```{r}
-<<<<<<< HEAD
-
-f <- df[which(df$acc_z_sm > 0.2),]
-=======
+# f <- df[which(df$acc_z_sm > 0.2),]
 df$datetime <- as.POSIXct(paste0(df$date, " ", df$time_hh_mm_ss_ddd), 
                           format = "%d/%m/%Y %H:%M:%OS")
 f <- df# [which(df$acc_z_sm > 0.2),]
->>>>>>> 5b60142b395fdbce03f5ef2fb4bf14b35459edda
 ```
 
 ## plot marked events
@@ -178,15 +173,14 @@ for(i in 41:80){#length(r$lengths)){
 
 ```
 
-<<<<<<< HEAD
+
 ```{r}
 f$n <- lapply(seq_along(1:length(r$lengths)), function(i){
   return(rep(r$lengths[i], r$lengths[i]))
 }) %>% unlist
 ```
-=======
+
 add Y axis
->>>>>>> 5b60142b395fdbce03f5ef2fb4bf14b35459edda
 
 # remove events at the beginning and end
 These come from the transition to flying but don't represent true pauses
@@ -212,6 +206,7 @@ f$bout[f$bout %in% which(tt < 600)] <- NA
 # save data
 ```{r}
 save(f, df, file = "../../../../Dropbox/MPI/Phyllostomus/DDMT/DDMT_export/PH_ST_80/Filename_continuous_export_split#11_10.robj")
+load("../../../../Dropbox/MPI/Phyllostomus/DDMT/DDMT_export/PH_ST_80/Filename_continuous_export_split#11_10.robj")
 ```
 
 

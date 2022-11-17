@@ -1,0 +1,17 @@
+---
+title: "SOM"
+output: html_document
+date: "2022-11-10"
+---
+
+
+https://cran.r-project.org/web/packages/aweSOM/vignettes/aweSOM.html
+https://rpubs.com/AlgoritmaAcademy/som
+https://www.youtube.com/watch?v=1NCtEKKPfyY&ab_channel=ggnot2
+https://www.r-bloggers.com/2021/04/self-organizing-maps-in-r-supervised-vs-unsupervised/
+
+
+https://medium.com/rapids-ai/tsne-with-gpus-hours-to-seconds-9d9c17c941db
+https://datavizpyr.com/how-to-make-tsne-plot-in-r/
+
+https://cran.r-project.org/web/packages/mHMMbayes/vignettes/tutorial-mhmm.html
