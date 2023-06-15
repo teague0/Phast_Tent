@@ -1,0 +1,57 @@
+---
+title: "BORIS_ACC"
+output: html_document
+date: "2023-06-15"
+---
+
+```{r}
+library(pacman)
+p_load(lubridate, data.table, tidyverse, dplyr)
+```
+
+# load acceleration data
+```{r}
+bolt <- fread("../../../Dropbox/MPI/Phyllostomus/Fieldwork/Data/FlightCage/PH_FC_01.csv")
+heart <- fread("../../../Dropbox/MPI/Phyllostomus/Fieldwork/Data/FlightCage/PH_FC_02.csv")
+star <- fread("../../../Dropbox/MPI/Phyllostomus/Fieldwork/Data/FlightCage/PH_FC_03.csv")
+moon <- fread("../../../Dropbox/MPI/Phyllostomus/Fieldwork/Data/FlightCage/PH_FC_04.csv")
+
+bolt$time <- dmy_hms(bolt$timestamp)
+```
+
+```{r}
+bolt_4.10 <- bolt %>% filter(time > ymd("2022-04-12") & time < ymd("2022-04-13"))
+plot(bolt_4.10$time, bolt_4.10$z)
+
+# april 12
+video_start <- dmy_hms("13-04-2022 05:07:26")
+a10 <- data.table::fread("../../../Dropbox/MPI/Dechmann_Lab/Johannes/boris_files/ExportedData/100422_6_2.csv", header = TRUE)
+paste0(a10$Behavior, a10$Subject) %>% table
+
+a10_star <- a10 %>% filter(Subject == "star")
+
+ggplot(a10, aes(x = Time/50, y = Behavior, col = Subject))+
+  geom_point()+
+  facet_wrap(~Subject)
+
+plot(a12_heart$Time/50, a12_heart$Behavior %>% factor)
+
+```
+
+
+```{r}
+bolt_4.12 <- bolt %>% filter(time > 2022)
+
+# april 12
+video_start <- dmy_hms("13-04-2022 05:07:26")
+a12 <- data.table::fread("../../../Dropbox/MPI/Dechmann_Lab/Johannes/boris_files/ExportedData/120422_7_1.csv", header = TRUE)
+a12$Behavior %>% table
+
+a12_heart <- a12 %>% filter(Subject == "heart")
+
+ggplot(a12, aes(x = Time/50, y = Behavior, col = Subject))+geom_point()
+
+plot(a12_heart$Time/50, a12_heart$Behavior %>% factor)
+
+```
+
