@@ -6,41 +6,308 @@ date: "2023-06-15"
 
 ```{r}
 library(pacman)
-p_load(lubridate, data.table, tidyverse, dplyr)
+p_load(lubridate, data.table, tidyverse, dplyr, accelerateR)
 ```
+
+```{r}
+acceleration <- data.frame(time = rep(seq(5),each=20), x = runif(n = 100,min = 1900,max=2100) ,
+y = runif(n = 100,min = 2100,max=2300) , z = runif(n = 100,min = 1800,max=2000))
+
+sumstats <- sum_data(data=acceleration , time="time" , x="x" ,y="y" , z="z" , stats="all")
+sumstats
+
+```
+
+
+
 
 # load acceleration data
 ```{r}
-bolt <- fread("../../../Dropbox/MPI/Phyllostomus/Fieldwork/Data/FlightCage/PH_FC_01.csv")
-heart <- fread("../../../Dropbox/MPI/Phyllostomus/Fieldwork/Data/FlightCage/PH_FC_02.csv")
-star <- fread("../../../Dropbox/MPI/Phyllostomus/Fieldwork/Data/FlightCage/PH_FC_03.csv")
-moon <- fread("../../../Dropbox/MPI/Phyllostomus/Fieldwork/Data/FlightCage/PH_FC_04.csv")
+# bolt <- fread("../../../../Dropbox/MPI/Phyllostomus/Fieldwork/Data/FlightCage/PH_FC_01.csv")
+# bolt <- fread("../../../../ownCloud - ehurme@ab.mpg.de@owncloud.gwdg.de/Firetail/Phyllostomushastatus/Model_tag_PH_FC_01/")
+# heart <- fread("../../../../Dropbox/MPI/Phyllostomus/Fieldwork/Data/FlightCage/PH_FC_02.csv")
 
-bolt$time <- dmy_hms(bolt$timestamp)
+star <- fread("../../../../Dropbox/MPI/Phyllostomus/Fieldwork/Data/FlightCage/PH_FC_03.csv")
+rm(star)
+moon <- fread("../../../../Dropbox/MPI/Phyllostomus/Fieldwork/Data/FlightCage/PH_FC_04.csv")
+
+
+
+# bolt$time <- dmy_hms(bolt$datetime)
+# bolt$id <- "bolt"
+# bolt$sampling <- 50
+# 
+# heart$time <- dmy_hms(heart$datetime)
+
+star$time <- dmy_hms(star$timestamp)
+# star$time0 <- round.POSIXt(star$time, units = "sec")
+  
+  
+moon$time <- dmy_hms(moon$timestamp)
 ```
 
+# load video data
 ```{r}
-bolt_4.10 <- bolt %>% filter(time > ymd("2022-04-12") & time < ymd("2022-04-13"))
-plot(bolt_4.10$time, bolt_4.10$z)
+a <- data.table::fread("../../../../Dropbox/MPI/Dechmann_Lab/Johannes/boris_files/ExportedData/060422_1_1.csv", header = TRUE)
+# which bats are active?
+paste0(a$Behavior, a$Subject) %>% table
 
-# april 12
-video_start <- dmy_hms("13-04-2022 05:07:26")
-a10 <- data.table::fread("../../../Dropbox/MPI/Dechmann_Lab/Johannes/boris_files/ExportedData/100422_6_2.csv", header = TRUE)
+```
+
+## 06/04/22 
+### Part 1.1
+```{r}
+
+video_created <- ymd_hm("2022-04-07 1:11")
+a06.1.1 <- data.table::fread("../../../../Dropbox/MPI/Dechmann_Lab/Johannes/boris_files/ExportedData/060422_1_1.csv", header = TRUE)
+paste0(a06.1.1$Behavior, a06.1.1$Subject) %>% table
+video_duration <- a06.1.1$`Total length`[1]
+
+
+a06.1.1_bolt <- a06.1.1 %>% filter(Subject == "bolt")
+a06.1.1_moon <- a06.1.1 %>% filter(Subject == "moon")
+a06.1.1_heart <- a06.1.1 %>% filter(Subject == "heart")
+a06.1.1_star <- a06.1.1 %>% filter(Subject == "star")
+
+a06.1.1_moon_mlt <- data.frame(start = a06.1.1_moon$Time[a06.1.1_moon$Status == "START"],
+                               stop = a06.1.1_moon$Time[a06.1.1_moon$Status == "STOP"],
+                               behavior = a06.1.1_moon$Behavior[a06.1.1_moon$Status == "START"])
+
+ggplot(a06.1.1_moon_mlt, aes(x = start, xend = stop, y = behavior, yend = behavior, col = behavior))+ geom_segment(size = 2)
+
+```
+
+#### look at moon
+```{r}
+moon_4.06.1.1 <- moon %>% filter(time > ymd("2022-04-06") & time < ymd("2022-04-08"))
+
+idx <- seq(1, nrow(moon_4.06.1.1), by = 100)
+moon_4.06.1.1_thin <- moon_4.06.1.1[idx,]
+
+range(moon_4.06.1.1_thin$time)
+
+# layout(cbind(1:3))
+# par(mar = c(2,5,2,2))
+
+plot(moon_4.06.1.1_thin$time+5*3600, moon_4.06.1.1_thin$x, type = "l", xlab = "", ylab = "x")
+abline(v = video_created, col = 2)
+abline(v = video_created-video_duration, col = 4)
+
+a06.1.1_moon$BehaviorNum <- factor(a06.1.1_moon$Behavior)
+
+plot(moon_4.06.1.1_thin$time+5*3600, moon_4.06.1.1_thin$x, type = "l", xlab = "", ylab = "x",
+     xlim = c(video_created-video_duration, video_created), ylim = c(-4,6))
+points(a06.1.1_moon$Time+video_created-video_duration, a06.1.1_moon$Behavior %>% factor)
+segments(x0 = a06.1.1_moon$Time[a06.1.1_moon$Status == "START"]+video_created-video_duration, 
+         x1 = a06.1.1_moon$Time[a06.1.1_moon$Status == "STOP"]+video_created-video_duration,
+         y0 = a06.1.1_moon$BehaviorNum[a06.1.1_moon$Status == "START"] %>% as.numeric, 
+         y1 = a06.1.1_moon$BehaviorNum[a06.1.1_moon$Status == "STOP"] %>% as.numeric)
+
+
+
+# abline(v = video_created, col = 2)
+# abline(v = video_created-video_duration, col = 4)
+lines(moon_4.06.1.1_thin$time-5*3600, moon_4.06.1.1_thin$y, col = 2)
+lines(moon_4.06.1.1_thin$time-5*3600, moon_4.06.1.1_thin$z, col = 3)
+
+a06.1.1_moon_mlt <- data.frame(start = a06.1.1_moon$Time[a06.1.1_moon$Status == "START"]+video_created-video_duration,
+                               stop = a06.1.1_moon$Time[a06.1.1_moon$Status == "STOP"]+video_created-video_duration,
+                               z = a06.1.1_moon$Behavior[a06.1.1_moon$Status == "START"] %>% factor %>% as.numeric)
+
+time_shift <- 5*3600 - 100
+
+ggplot(a06.1.1_moon_mlt, aes(x = start, 
+                             xend = stop, 
+                             y = z+1, yend = z+1, col = factor(z)))+
+  ylim(c(-4,4))+
+  xlim(c(min(a06.1.1_moon_mlt$start)-1000, max(a06.1.1_moon_mlt$stop)+1000))+
+  geom_segment(size = 2)+
+  geom_line(data = moon_4.06.1.1_thin, aes(x = time+time_shift, y = z), col = 1, inherit.aes = FALSE)+
+  geom_line(data = moon_4.06.1.1_thin, aes(x = time+time_shift, y = y), col = 2, inherit.aes = FALSE)+
+  geom_line(data = moon_4.06.1.1_thin, aes(x = time+time_shift, y = x), col = 3, inherit.aes = FALSE)
+
+```
+
+#### look at star
+```{r}
+star_4.06.1.1 <- star %>% filter(time > ymd("2022-04-06") & time < ymd("2022-04-08"))
+
+idx <- seq(1, nrow(star_4.06.1.1), by = 100)
+star_4.06.1.1_thin <- star_4.06.1.1[idx,]
+
+range(star_4.06.1.1_thin$time)
+
+# layout(cbind(1:3))
+# par(mar = c(2,5,2,2))
+
+plot(star_4.06.1.1_thin$time+5*3600, star_4.06.1.1_thin$x, type = "l", xlab = "", ylab = "x")
+abline(v = video_created, col = 2)
+abline(v = video_created-video_duration, col = 4)
+
+a06.1.1_star$BehaviorNum <- factor(a06.1.1_star$Behavior)
+
+plot(star_4.06.1.1_thin$time+5*3600, star_4.06.1.1_thin$x, type = "l", xlab = "", ylab = "x",
+     xlim = c(video_created-video_duration, video_created), ylim = c(-4,6))
+points(a06.1.1_star$Time+video_created-video_duration, a06.1.1_star$Behavior %>% factor)
+segments(x0 = a06.1.1_star$Time[a06.1.1_star$Status == "START"]+video_created-video_duration, 
+         x1 = a06.1.1_star$Time[a06.1.1_star$Status == "STOP"]+video_created-video_duration,
+         y0 = a06.1.1_star$BehaviorNum[a06.1.1_star$Status == "START"] %>% as.numeric, 
+         y1 = a06.1.1_star$BehaviorNum[a06.1.1_star$Status == "STOP"] %>% as.numeric)
+
+
+
+# abline(v = video_created, col = 2)
+# abline(v = video_created-video_duration, col = 4)
+lines(star_4.06.1.1_thin$time-5*3600, star_4.06.1.1_thin$y, col = 2)
+lines(star_4.06.1.1_thin$time-5*3600, star_4.06.1.1_thin$z, col = 3)
+
+a06.1.1_star_mlt <- data.frame(start = a06.1.1_star$Time[a06.1.1_star$Status == "START"]+video_created-video_duration,
+                               stop = a06.1.1_star$Time[a06.1.1_star$Status == "STOP"]+video_created-video_duration,
+                               z = a06.1.1_star$Behavior[a06.1.1_star$Status == "START"] %>% factor %>% as.numeric)
+
+time_shift <- 5*3600 - 100
+
+ggplot(a06.1.1_star_mlt, aes(x = start, 
+                             xend = stop, 
+                             y = z+1, yend = z+1, col = factor(z)))+
+  ylim(c(-4,4))+
+  xlim(c(min(a06.1.1_star_mlt$start)-5000, max(a06.1.1_star_mlt$stop)+5000))+
+  geom_segment(size = 2)+
+  geom_line(data = star_4.06.1.1_thin, aes(x = time+time_shift, y = z), col = 1, inherit.aes = FALSE)+
+  geom_line(data = star_4.06.1.1_thin, aes(x = time+time_shift, y = y), col = 2, inherit.aes = FALSE)+
+  geom_line(data = star_4.06.1.1_thin, aes(x = time+time_shift, y = x), col = 3, inherit.aes = FALSE)
+
+```
+
+#### look at heart
+```{r}
+heart_4.06.1.1 <- heart %>% filter(time > ymd("2022-04-06") & time < ymd("2022-04-08"))
+
+idx <- seq(1, nrow(heart_4.06.1.1), by = 100)
+heart_4.06.1.1_thin <- heart_4.06.1.1[idx,]
+
+range(heart_4.06.1.1_thin$time)
+
+# layout(cbind(1:3))
+# par(mar = c(2,5,2,2))
+
+plot(heart_4.06.1.1_thin$time+5*3600, heart_4.06.1.1_thin$x, type = "l", xlab = "", ylab = "x")
+abline(v = video_created, col = 2)
+abline(v = video_created-video_duration, col = 4)
+
+a06.1.1_heart$BehaviorNum <- factor(a06.1.1_heart$Behavior)
+
+plot(heart_4.06.1.1_thin$time+5*3600, heart_4.06.1.1_thin$x, type = "l", xlab = "", ylab = "x",
+     xlim = c(video_created-video_duration, video_created), ylim = c(-4,6))
+points(a06.1.1_heart$Time+video_created-video_duration, a06.1.1_heart$Behavior %>% factor)
+segments(x0 = a06.1.1_heart$Time[a06.1.1_heart$Status == "START"]+video_created-video_duration, 
+         x1 = a06.1.1_heart$Time[a06.1.1_heart$Status == "STOP"]+video_created-video_duration,
+         y0 = a06.1.1_heart$BehaviorNum[a06.1.1_heart$Status == "START"] %>% as.numeric, 
+         y1 = a06.1.1_heart$BehaviorNum[a06.1.1_heart$Status == "STOP"] %>% as.numeric)
+
+
+
+# abline(v = video_created, col = 2)
+# abline(v = video_created-video_duration, col = 4)
+lines(heart_4.06.1.1_thin$time-5*3600, heart_4.06.1.1_thin$y, col = 2)
+lines(heart_4.06.1.1_thin$time-5*3600, heart_4.06.1.1_thin$z, col = 3)
+
+a06.1.1_heart_mlt <- data.frame(start = a06.1.1_heart$Time[a06.1.1_heart$Status == "START"]+video_created-video_duration,
+                               stop = a06.1.1_heart$Time[a06.1.1_heart$Status == "STOP"]+video_created-video_duration,
+                               z = a06.1.1_heart$Behavior[a06.1.1_heart$Status == "START"] %>% factor %>% as.numeric)
+
+time_shift <- 5*3600 - 100
+
+ggplot(a06.1.1_heart_mlt, aes(x = start, 
+                             xend = stop, 
+                             y = z+1, yend = z+1, col = factor(z)))+
+  ylim(c(-4,4))+
+  xlim(c(min(a06.1.1_heart_mlt$start)-1000, max(a06.1.1_heart_mlt$stop)+1000))+
+  geom_segment(size = 2)+
+  geom_line(data = heart_4.06.1.1_thin, aes(x = time+time_shift, y = z), col = 1, inherit.aes = FALSE)+
+  geom_line(data = heart_4.06.1.1_thin, aes(x = time+time_shift, y = y), col = 2, inherit.aes = FALSE)+
+  geom_line(data = heart_4.06.1.1_thin, aes(x = time+time_shift, y = x), col = 3, inherit.aes = FALSE)
+
+```
+
+
+### Part 2.1
+```{r}
+
+video_created <- ymd_hms("2022-04-06 19:45")
+a06.2.1 <- data.table::fread("../../../../Dropbox/MPI/Dechmann_Lab/Johannes/boris_files/ExportedData/060422_2_1.csv", header = TRUE)
+paste0(a06.2.1$Behavior, a06.2.1$Subject) %>% table
+video_duration <- a06.2.1$`Total length`[1]
+
+
+a06.2.1_bolt <- a06.2.1 %>% filter(Subject == "bolt")
+a06.2.1_moon <- a06.2.1 %>% filter(Subject == "moon")
+a06.2.1_heart <- a06.2.1 %>% filter(Subject == "heart")
+a06.2.1_star <- a06.2.1 %>% filter(Subject == "star")
+
+a06.2.1_moon_mlt <- data.frame(start = a06.2.1_moon$Time[a06.2.1_moon$Status == "START"],
+                               stop = a06.2.1_moon$Time[a06.2.1_moon$Status == "STOP"],
+                               behavior = a06.2.1_moon$Behavior[a06.2.1_moon$Status == "START"])
+
+ggplot(a06.2.1_moon_mlt, aes(x = start, xend = stop, y = behavior, yend = behavior, col = behavior))+ geom_segment(size = 2)
+
+
+```
+
+## april 10
+```{r}
+a10 <- data.table::fread("../../../../Dropbox/MPI/Dechmann_Lab/Johannes/boris_files/ExportedData/100422_6_2.csv", header = TRUE)
+# which bats are active?
 paste0(a10$Behavior, a10$Subject) %>% table
 
+a10_bolt <- a10 %>% filter(Subject == "bolt")
+a10_moon <- a10 %>% filter(Subject == "moon")
 a10_star <- a10 %>% filter(Subject == "star")
 
-ggplot(a10, aes(x = Time/50, y = Behavior, col = Subject))+
-  geom_point()+
-  facet_wrap(~Subject)
+ggplot(a10, aes(x = Time/50*60+video_start, y = Behavior, col = Subject))+
+  geom_point()#+
+  # facet_wrap(~Subject)
 
 plot(a12_heart$Time/50, a12_heart$Behavior %>% factor)
 
 ```
 
 
+
 ```{r}
-bolt_4.12 <- bolt %>% filter(time > 2022)
+star_4.10 <- star %>% filter(time > ymd("2022-04-11") & time < ymd("2022-04-12"))
+# star_4.10_sum <- sum_data(star_4.10, time = "time", x="x" ,y="y" , z="z", stats = "ODBA")
+# plot(star_4.10_sum$time, star_4.10_sum$ODBA)
+rm(star)
+
+
+idx <- seq(1, nrow(star_4.10), by = 100)
+star_4.10_thin <- star_4.10[idx,]
+# rm(star_4.10)
+```
+
+
+```{r}
+video_created <- ymd_hms("2022-04-11 05:48:00")
+video_duration <- 1*3600+16*60+50
+range(star_4.10_thin$time)
+
+# layout(cbind(1:3))
+# par(mar = c(2,5,2,2))
+
+plot(star_4.10_thin$time-5*3600, star_4.10_thin$x, type = "l", xlab = "", ylab = "x",
+     xlim = c(video_created-video_duration, video_created), ylim = c(-4,6))
+points(a10_star$Time+video_created-video_duration, a10_star$Behavior %>% factor)
+# abline(v = video_created, col = 2)
+# abline(v = video_created-video_duration, col = 4)
+lines(star_4.10_thin$time-5*3600, star_4.10_thin$y, col = 2)
+lines(star_4.10_thin$time-5*3600, star_4.10_thin$z, col = 3)
+```
+
+
+
+```{r}
+star_4.12 <- star %>% filter(time > ymd("2022-04-12") & time < ymd_hms("2022-04-13 12:00:00"))
 
 # april 12
 video_start <- dmy_hms("13-04-2022 05:07:26")
