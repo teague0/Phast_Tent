@@ -18,40 +18,51 @@ sumstats
 
 ```
 
-
-
-
 # load acceleration data
 ```{r}
-# bolt <- fread("../../../../Dropbox/MPI/Phyllostomus/Fieldwork/Data/FlightCage/PH_FC_01.csv")
+bolt <- fread("../../../../Dropbox/MPI/Phyllostomus/Fieldwork/Data/FlightCage/PH_FC_01.csv")
+bolt <- bolt[,1:5]
 # bolt <- fread("../../../../ownCloud - ehurme@ab.mpg.de@owncloud.gwdg.de/Firetail/Phyllostomushastatus/Model_tag_PH_FC_01/")
-# heart <- fread("../../../../Dropbox/MPI/Phyllostomus/Fieldwork/Data/FlightCage/PH_FC_02.csv")
-
+heart <- fread("../../../../Dropbox/MPI/Phyllostomus/Fieldwork/Data/FlightCage/PH_FC_02.csv")
+heart <- heart[,1:5]
 star <- fread("../../../../Dropbox/MPI/Phyllostomus/Fieldwork/Data/FlightCage/PH_FC_03.csv")
-rm(star)
+star <- star[,1:5]
+# rm(star)
 moon <- fread("../../../../Dropbox/MPI/Phyllostomus/Fieldwork/Data/FlightCage/PH_FC_04.csv")
+moon <- moon[,1:5]
 
 
-
-# bolt$time <- dmy_hms(bolt$datetime)
+bolt$time <- dmy_hms(bolt$timestamp)
 # bolt$id <- "bolt"
 # bolt$sampling <- 50
-# 
-# heart$time <- dmy_hms(heart$datetime)
+heart$time <- dmy_hms(heart$timestamp)
 
 star$time <- dmy_hms(star$timestamp)
-# star$time0 <- round.POSIXt(star$time, units = "sec")
-  
-  
+
 moon$time <- dmy_hms(moon$timestamp)
 ```
 
 # load video data
 ```{r}
-a <- data.table::fread("../../../../Dropbox/MPI/Dechmann_Lab/Johannes/boris_files/ExportedData/060422_1_1.csv", header = TRUE)
-# which bats are active?
-paste0(a$Behavior, a$Subject) %>% table
+path <- "../../../../Dropbox/MPI/Dechmann_Lab/Johannes/boris_files/ExportedData/"
+files <- list.files(path, pattern = ".csv")
+i = 1
+for(i in 1:length(files)){
+  a <- data.table::fread(paste0(path, files[i]), header = TRUE)
+  # which bats are active?
+  paste0(a$Behavior, a$Subject) %>% table
+  a <- a[order(a$Subject, a$Behavior, a$Time),]
+  a_mlt <- data.frame(start = a$Time[a$Status == "START"],
+                            stop = a$Time[a$Status == "STOP"],
+                            behavior = a$Behavior[a$Status == "START"],
+                            subject = a$Subject[a$Status == "START"])
+  p <- ggplot(a_mlt, aes(x = start, xend = stop, y = behavior, yend = behavior, 
+                          col = behavior, group = subject))+
+    geom_segment(size = 2)+facet_wrap(~subject)+ggtitle(files[i])
+  print(p)
+}
 
+# 050422_1_2
 ```
 
 ## 06/04/22 
@@ -63,8 +74,17 @@ a06.1.1 <- data.table::fread("../../../../Dropbox/MPI/Dechmann_Lab/Johannes/bori
 paste0(a06.1.1$Behavior, a06.1.1$Subject) %>% table
 video_duration <- a06.1.1$`Total length`[1]
 
+a06.1.1 <- a06.1.1[order(a06.1.1$Subject, a06.1.1$Behavior, a06.1.1$Time),]
+a06.1.1_mlt <- data.frame(start = a06.1.1$Time[a06.1.1$Status == "START"],
+                          stop = a06.1.1$Time[a06.1.1$Status == "STOP"],
+                          behavior = a06.1.1$Behavior[a06.1.1$Status == "START"],
+                          subject = a06.1.1$Subject[a06.1.1$Status == "START"])
+ggplot(a06.1.1_mlt, aes(x = start, xend = stop, y = behavior, yend = behavior, 
+                        col = behavior, group = subject))+
+  geom_segment(size = 2)+facet_wrap(~subject)
 
-a06.1.1_bolt <- a06.1.1 %>% filter(Subject == "bolt")
+
+a06.1.1_bolt <- a06.1.1 %>% filter(Subject == "light bolt")
 a06.1.1_moon <- a06.1.1 %>% filter(Subject == "moon")
 a06.1.1_heart <- a06.1.1 %>% filter(Subject == "heart")
 a06.1.1_star <- a06.1.1 %>% filter(Subject == "star")
@@ -216,13 +236,13 @@ a06.1.1_heart_mlt <- data.frame(start = a06.1.1_heart$Time[a06.1.1_heart$Status 
                                stop = a06.1.1_heart$Time[a06.1.1_heart$Status == "STOP"]+video_created-video_duration,
                                z = a06.1.1_heart$Behavior[a06.1.1_heart$Status == "START"] %>% factor %>% as.numeric)
 
-time_shift <- 5*3600 - 100
+time_shift <- 5*3600+
 
 ggplot(a06.1.1_heart_mlt, aes(x = start, 
                              xend = stop, 
                              y = z+1, yend = z+1, col = factor(z)))+
   ylim(c(-4,4))+
-  xlim(c(min(a06.1.1_heart_mlt$start)-1000, max(a06.1.1_heart_mlt$stop)+1000))+
+  xlim(c(min(a06.1.1_heart_mlt$start)-3000, max(a06.1.1_heart_mlt$stop)+3000))+
   geom_segment(size = 2)+
   geom_line(data = heart_4.06.1.1_thin, aes(x = time+time_shift, y = z), col = 1, inherit.aes = FALSE)+
   geom_line(data = heart_4.06.1.1_thin, aes(x = time+time_shift, y = y), col = 2, inherit.aes = FALSE)+
@@ -238,6 +258,15 @@ video_created <- ymd_hms("2022-04-06 19:45")
 a06.2.1 <- data.table::fread("../../../../Dropbox/MPI/Dechmann_Lab/Johannes/boris_files/ExportedData/060422_2_1.csv", header = TRUE)
 paste0(a06.2.1$Behavior, a06.2.1$Subject) %>% table
 video_duration <- a06.2.1$`Total length`[1]
+
+a06.2.1 <- a06.2.1[order(a06.2.1$Subject, a06.2.1$Behavior, a06.2.1$Time),]
+a06.2.1_mlt <- data.frame(start = a06.2.1$Time[a06.2.1$Status == "START"],
+                          stop = a06.2.1$Time[a06.2.1$Status == "STOP"],
+                          behavior = a06.2.1$Behavior[a06.2.1$Status == "START"],
+                          subject = a06.2.1$Subject[a06.2.1$Status == "START"])
+ggplot(a06.2.1_mlt, aes(x = start, xend = stop, y = behavior, yend = behavior, 
+                        col = behavior, group = subject))+
+  geom_segment(size = 2)+facet_wrap(~subject)
 
 
 a06.2.1_bolt <- a06.2.1 %>% filter(Subject == "bolt")
