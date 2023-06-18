@@ -283,6 +283,86 @@ ggplot(a06.2.1_moon_mlt, aes(x = start, xend = stop, y = behavior, yend = behavi
 
 ```
 
+### Part 3.1
+```{r}
+
+video_created <- ymd_hm("2022-04-06 23:15")
+a06.3.1 <- data.table::fread("../../../../Dropbox/MPI/Dechmann_Lab/Johannes/boris_files/ExportedData/060422_3_1.csv", header = TRUE)
+paste0(a06.3.1$Behavior, a06.3.1$Subject) %>% table
+video_duration <- a06.3.1$`Total length`[1]
+
+a06.3.1 <- a06.3.1[order(a06.3.1$Subject, a06.3.1$Behavior, a06.3.1$Time),]
+a06.3.1_mlt <- data.frame(start = a06.3.1$Time[a06.3.1$Status == "START"],
+                          stop = a06.3.1$Time[a06.3.1$Status == "STOP"],
+                          behavior = a06.3.1$Behavior[a06.3.1$Status == "START"],
+                          subject = a06.3.1$Subject[a06.3.1$Status == "START"])
+ggplot(a06.3.1_mlt, aes(x = start, xend = stop, y = behavior, yend = behavior, 
+                        col = behavior, group = subject))+
+  geom_segment(size = 2)+facet_wrap(~subject)
+
+
+a06.3.1_bolt <- a06.3.1 %>% filter(Subject == "bolt")
+a06.3.1_moon <- a06.3.1 %>% filter(Subject == "moon")
+a06.3.1_heart <- a06.3.1 %>% filter(Subject == "heart")
+a06.3.1_star <- a06.3.1 %>% filter(Subject == "star")
+
+a06.3.1_moon_mlt <- data.frame(start = a06.3.1_moon$Time[a06.3.1_moon$Status == "START"],
+                               stop = a06.3.1_moon$Time[a06.3.1_moon$Status == "STOP"],
+                               behavior = a06.3.1_moon$Behavior[a06.3.1_moon$Status == "START"])
+
+ggplot(a06.3.1_moon_mlt, aes(x = start, xend = stop, y = behavior, yend = behavior, col = behavior))+ geom_segment(size = 2)
+
+
+```
+
+#### look at moon
+```{r}
+moon_4.06.3.1 <- moon %>% filter(time > ymd("2022-04-06") & time < ymd("2022-04-08"))
+
+idx <- seq(1, nrow(moon_4.06.3.1), by = 100)
+moon_4.06.3.1_thin <- moon_4.06.3.1[idx,]
+
+range(moon_4.06.3.1_thin$time)
+
+# layout(cbind(1:3))
+# par(mar = c(2,5,2,2))
+
+plot(moon_4.06.3.1_thin$time+5*3600, moon_4.06.3.1_thin$x, type = "l", xlab = "", ylab = "x")
+abline(v = video_created, col = 2)
+abline(v = video_created-video_duration, col = 4)
+
+a06.3.1_moon$BehaviorNum <- factor(a06.3.1_moon$Behavior)
+
+plot(moon_4.06.3.1_thin$time+5*3600, moon_4.06.3.1_thin$x, type = "l", xlab = "", ylab = "x",
+     xlim = c(video_created-video_duration, video_created), ylim = c(-4,6))
+points(a06.3.1_moon$Time+video_created-video_duration, a06.3.1_moon$Behavior %>% factor)
+segments(x0 = a06.3.1_moon$Time[a06.3.1_moon$Status == "START"]+video_created-video_duration, 
+         x1 = a06.3.1_moon$Time[a06.3.1_moon$Status == "STOP"]+video_created-video_duration,
+         y0 = a06.3.1_moon$BehaviorNum[a06.3.1_moon$Status == "START"] %>% as.numeric, 
+         y1 = a06.3.1_moon$BehaviorNum[a06.3.1_moon$Status == "STOP"] %>% as.numeric)
+
+lines(moon_4.06.3.1_thin$time-5*3600, moon_4.06.3.1_thin$y, col = 2)
+lines(moon_4.06.3.1_thin$time-5*3600, moon_4.06.3.1_thin$z, col = 3)
+
+a06.3.1_moon_mlt <- data.frame(start = a06.3.1_moon$Time[a06.3.1_moon$Status == "START"]+video_created-video_duration,
+                               stop = a06.3.1_moon$Time[a06.3.1_moon$Status == "STOP"]+video_created-video_duration,
+                               z = a06.3.1_moon$Behavior[a06.3.1_moon$Status == "START"] %>% factor %>% as.numeric)
+
+time_shift <- 5*3600 - 100
+
+ggplot(a06.3.1_moon_mlt, aes(x = start, 
+                             xend = stop, 
+                             y = z+1, yend = z+1, col = factor(z)))+
+  ylim(c(-4,4))+
+  xlim(c(min(a06.3.1_moon_mlt$start)-1000, max(a06.3.1_moon_mlt$stop)+1000))+
+  geom_segment(size = 2)+
+  geom_line(data = moon_4.06.3.1_thin, aes(x = time+time_shift, y = z), col = 1, inherit.aes = FALSE)+
+  geom_line(data = moon_4.06.3.1_thin, aes(x = time+time_shift, y = y), col = 2, inherit.aes = FALSE)+
+  geom_line(data = moon_4.06.3.1_thin, aes(x = time+time_shift, y = x), col = 3, inherit.aes = FALSE)
+
+```
+
+
 ## april 10
 ```{r}
 a10 <- data.table::fread("../../../../Dropbox/MPI/Dechmann_Lab/Johannes/boris_files/ExportedData/100422_6_2.csv", header = TRUE)
