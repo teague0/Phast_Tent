@@ -40,7 +40,18 @@ heart$time <- dmy_hms(heart$timestamp)
 star$time <- dmy_hms(star$timestamp)
 
 moon$time <- dmy_hms(moon$timestamp)
+
+plot(bolt$time, bolt$z)
+
 ```
+
+```{r}
+hour(bolt$time[which(bolt$z > 3.9)]) %>% as.numeric() %>% summary
+with(bolt[bolt$z > 3.9,], plot(hour(time), z))
+
+
+```
+
 
 # load video data
 ```{r}
@@ -134,7 +145,7 @@ a06.1.1_moon_mlt <- data.frame(start = a06.1.1_moon$Time[a06.1.1_moon$Status == 
                                stop = a06.1.1_moon$Time[a06.1.1_moon$Status == "STOP"]+video_created-video_duration,
                                z = a06.1.1_moon$Behavior[a06.1.1_moon$Status == "START"] %>% factor %>% as.numeric)
 
-time_shift <- 5*3600 - 100
+time_shift <- 5*3600
 
 ggplot(a06.1.1_moon_mlt, aes(x = start, 
                              xend = stop, 
@@ -185,7 +196,7 @@ a06.1.1_star_mlt <- data.frame(start = a06.1.1_star$Time[a06.1.1_star$Status == 
                                stop = a06.1.1_star$Time[a06.1.1_star$Status == "STOP"]+video_created-video_duration,
                                z = a06.1.1_star$Behavior[a06.1.1_star$Status == "START"] %>% factor %>% as.numeric)
 
-time_shift <- 5*3600 - 100
+time_shift <- 5*3600
 
 ggplot(a06.1.1_star_mlt, aes(x = start, 
                              xend = stop, 
@@ -236,7 +247,7 @@ a06.1.1_heart_mlt <- data.frame(start = a06.1.1_heart$Time[a06.1.1_heart$Status 
                                stop = a06.1.1_heart$Time[a06.1.1_heart$Status == "STOP"]+video_created-video_duration,
                                z = a06.1.1_heart$Behavior[a06.1.1_heart$Status == "START"] %>% factor %>% as.numeric)
 
-time_shift <- 5*3600+
+time_shift <- 5*3600
 
 ggplot(a06.1.1_heart_mlt, aes(x = start, 
                              xend = stop, 
@@ -253,7 +264,6 @@ ggplot(a06.1.1_heart_mlt, aes(x = start,
 
 ### Part 2.1
 ```{r}
-
 video_created <- ymd_hms("2022-04-06 19:45")
 a06.2.1 <- data.table::fread("../../../../Dropbox/MPI/Dechmann_Lab/Johannes/boris_files/ExportedData/060422_2_1.csv", header = TRUE)
 paste0(a06.2.1$Behavior, a06.2.1$Subject) %>% table
@@ -273,16 +283,216 @@ a06.2.1_bolt <- a06.2.1 %>% filter(Subject == "bolt")
 a06.2.1_moon <- a06.2.1 %>% filter(Subject == "moon")
 a06.2.1_heart <- a06.2.1 %>% filter(Subject == "heart")
 a06.2.1_star <- a06.2.1 %>% filter(Subject == "star")
+```
 
-a06.2.1_moon_mlt <- data.frame(start = a06.2.1_moon$Time[a06.2.1_moon$Status == "START"],
-                               stop = a06.2.1_moon$Time[a06.2.1_moon$Status == "STOP"],
-                               behavior = a06.2.1_moon$Behavior[a06.2.1_moon$Status == "START"])
+#### look at moon
+```{r}
+moon_4.06.2.1 <- moon %>% filter(time > ymd("2022-04-06") & time < ymd("2022-04-08"))
 
-ggplot(a06.2.1_moon_mlt, aes(x = start, xend = stop, y = behavior, yend = behavior, col = behavior))+ geom_segment(size = 2)
+idx <- seq(1, nrow(moon_4.06.2.1), by = 100)
+moon_4.06.2.1_thin <- moon_4.06.2.1[idx,]
+
+range(moon_4.06.2.1_thin$time)
+
+# layout(cbind(1:3))
+# par(mar = c(2,5,2,2))
+
+plot(moon_4.06.2.1_thin$time+5*3600, moon_4.06.2.1_thin$x, type = "l", xlab = "", ylab = "x")
+abline(v = video_created, col = 2)
+abline(v = video_created-video_duration, col = 4)
+
+a06.2.1_moon$BehaviorNum <- factor(a06.2.1_moon$Behavior)
+
+plot(moon_4.06.2.1_thin$time+5*3600, moon_4.06.2.1_thin$x, type = "l", xlab = "", ylab = "x",
+     xlim = c(video_created-video_duration, video_created), ylim = c(-4,6))
+points(a06.2.1_moon$Time+video_created-video_duration, a06.2.1_moon$Behavior %>% factor)
+segments(x0 = a06.2.1_moon$Time[a06.2.1_moon$Status == "START"]+video_created-video_duration, 
+         x1 = a06.2.1_moon$Time[a06.2.1_moon$Status == "STOP"]+video_created-video_duration,
+         y0 = a06.2.1_moon$BehaviorNum[a06.2.1_moon$Status == "START"] %>% as.numeric, 
+         y1 = a06.2.1_moon$BehaviorNum[a06.2.1_moon$Status == "STOP"] %>% as.numeric)
+
+
+
+# abline(v = video_created, col = 2)
+# abline(v = video_created-video_duration, col = 4)
+lines(moon_4.06.2.1_thin$time-5*3600, moon_4.06.2.1_thin$y, col = 2)
+lines(moon_4.06.2.1_thin$time-5*3600, moon_4.06.2.1_thin$z, col = 3)
+
+a06.2.1_moon_mlt <- data.frame(start = a06.2.1_moon$Time[a06.2.1_moon$Status == "START"]+video_created-video_duration,
+                               stop = a06.2.1_moon$Time[a06.2.1_moon$Status == "STOP"]+video_created-video_duration,
+                               z = a06.2.1_moon$Behavior[a06.2.1_moon$Status == "START"] %>% factor %>% as.numeric)
+
+time_shift <- 5*3600+5500
+
+ggplot(a06.2.1_moon_mlt, aes(x = start, 
+                             xend = stop, 
+                             y = z+1, yend = z+1, col = factor(z)))+
+  ylim(c(-4,4))+
+  xlim(c(min(a06.2.1_moon_mlt$start)-1000, max(a06.2.1_moon_mlt$stop)+1000))+
+  geom_segment(size = 2)+
+  geom_line(data = moon_4.06.2.1_thin, aes(x = time+time_shift, y = z), col = 1, inherit.aes = FALSE)+
+  geom_line(data = moon_4.06.2.1_thin, aes(x = time+time_shift, y = y), col = 2, inherit.aes = FALSE)+
+  geom_line(data = moon_4.06.2.1_thin, aes(x = time+time_shift, y = x), col = 3, inherit.aes = FALSE)
+
 
 
 ```
 
+#### look at star
+```{r}
+star_4.06.2.1 <- star %>% filter(time > ymd("2022-04-06") & time < ymd("2022-04-08"))
+
+idx <- seq(1, nrow(star_4.06.2.1), by = 100)
+star_4.06.2.1_thin <- star_4.06.2.1[idx,]
+
+range(star_4.06.2.1_thin$time)
+
+# layout(cbind(1:3))
+# par(mar = c(2,5,2,2))
+
+plot(star_4.06.2.1_thin$time+5*3600, star_4.06.2.1_thin$x, type = "l", xlab = "", ylab = "x")
+abline(v = video_created, col = 2)
+abline(v = video_created-video_duration, col = 4)
+
+a06.2.1_star$BehaviorNum <- factor(a06.2.1_star$Behavior)
+
+plot(star_4.06.2.1_thin$time+5*3600, star_4.06.2.1_thin$x, type = "l", xlab = "", ylab = "x",
+     xlim = c(video_created-video_duration, video_created), ylim = c(-4,6))
+points(a06.2.1_star$Time+video_created-video_duration, a06.2.1_star$Behavior %>% factor)
+segments(x0 = a06.2.1_star$Time[a06.2.1_star$Status == "START"]+video_created-video_duration, 
+         x1 = a06.2.1_star$Time[a06.2.1_star$Status == "STOP"]+video_created-video_duration,
+         y0 = a06.2.1_star$BehaviorNum[a06.2.1_star$Status == "START"] %>% as.numeric, 
+         y1 = a06.2.1_star$BehaviorNum[a06.2.1_star$Status == "STOP"] %>% as.numeric)
+
+
+
+# abline(v = video_created, col = 2)
+# abline(v = video_created-video_duration, col = 4)
+lines(star_4.06.2.1_thin$time-5*3600, star_4.06.2.1_thin$y, col = 2)
+lines(star_4.06.2.1_thin$time-5*3600, star_4.06.2.1_thin$z, col = 3)
+
+a06.2.1_star_mlt <- data.frame(start = a06.2.1_star$Time[a06.2.1_star$Status == "START"]+video_created-video_duration,
+                               stop = a06.2.1_star$Time[a06.2.1_star$Status == "STOP"]+video_created-video_duration,
+                               z = a06.2.1_star$Behavior[a06.2.1_star$Status == "START"] %>% factor %>% as.numeric)
+
+time_shift <- 5*3600+5500
+
+ggplot(a06.2.1_star_mlt, aes(x = start, 
+                             xend = stop, 
+                             y = z+1, yend = z+1, col = factor(z)))+
+  ylim(c(-4,4))+
+  xlim(c(min(a06.2.1_star_mlt$start)-1000, max(a06.2.1_star_mlt$stop)+1000))+
+  geom_segment(size = 2)+
+  geom_line(data = star_4.06.2.1_thin, aes(x = time+time_shift, y = z), col = 1, inherit.aes = FALSE)+
+  geom_line(data = star_4.06.2.1_thin, aes(x = time+time_shift, y = y), col = 2, inherit.aes = FALSE)+
+  geom_line(data = star_4.06.2.1_thin, aes(x = time+time_shift, y = x), col = 3, inherit.aes = FALSE)
+
+
+```
+
+#### look at heart
+```{r}
+heart_4.06.2.1 <- heart %>% filter(time > ymd("2022-04-06") & time < ymd("2022-04-08"))
+
+idx <- seq(1, nrow(heart_4.06.2.1), by = 100)
+heart_4.06.2.1_thin <- heart_4.06.2.1[idx,]
+
+range(heart_4.06.2.1_thin$time)
+
+# layout(cbind(1:3))
+# par(mar = c(2,5,2,2))
+
+plot(heart_4.06.2.1_thin$time+5*3600, heart_4.06.2.1_thin$x, type = "l", xlab = "", ylab = "x")
+abline(v = video_created, col = 2)
+abline(v = video_created-video_duration, col = 4)
+
+a06.2.1_heart$BehaviorNum <- factor(a06.2.1_heart$Behavior)
+
+plot(heart_4.06.2.1_thin$time+5*3600, heart_4.06.2.1_thin$x, type = "l", xlab = "", ylab = "x",
+     xlim = c(video_created-video_duration, video_created), ylim = c(-4,6))
+points(a06.2.1_heart$Time+video_created-video_duration, a06.2.1_heart$Behavior %>% factor)
+segments(x0 = a06.2.1_heart$Time[a06.2.1_heart$Status == "START"]+video_created-video_duration, 
+         x1 = a06.2.1_heart$Time[a06.2.1_heart$Status == "STOP"]+video_created-video_duration,
+         y0 = a06.2.1_heart$BehaviorNum[a06.2.1_heart$Status == "START"] %>% as.numeric, 
+         y1 = a06.2.1_heart$BehaviorNum[a06.2.1_heart$Status == "STOP"] %>% as.numeric)
+
+
+
+# abline(v = video_created, col = 2)
+# abline(v = video_created-video_duration, col = 4)
+lines(heart_4.06.2.1_thin$time-5*3600, heart_4.06.2.1_thin$y, col = 2)
+lines(heart_4.06.2.1_thin$time-5*3600, heart_4.06.2.1_thin$z, col = 3)
+
+a06.2.1_heart_mlt <- data.frame(start = a06.2.1_heart$Time[a06.2.1_heart$Status == "START"]+video_created-video_duration,
+                               stop = a06.2.1_heart$Time[a06.2.1_heart$Status == "STOP"]+video_created-video_duration,
+                               z = a06.2.1_heart$Behavior[a06.2.1_heart$Status == "START"] %>% factor %>% as.numeric)
+
+time_shift <- 5*3600+5500
+
+ggplot(a06.2.1_heart_mlt, aes(x = start, 
+                             xend = stop, 
+                             y = z+1, yend = z+1, col = factor(z)))+
+  ylim(c(-4,4))+
+  xlim(c(min(a06.2.1_heart_mlt$start)-5000, max(a06.2.1_heart_mlt$stop)+5000))+
+  geom_segment(size = 2)+
+  geom_line(data = heart_4.06.2.1_thin, aes(x = time+time_shift, y = z), col = 1, inherit.aes = FALSE)+
+  geom_line(data = heart_4.06.2.1_thin, aes(x = time+time_shift, y = y), col = 2, inherit.aes = FALSE)+
+  geom_line(data = heart_4.06.2.1_thin, aes(x = time+time_shift, y = x), col = 3, inherit.aes = FALSE)
+
+
+```
+
+#### look at bolt
+```{r}
+bolt_4.06.2.1 <- bolt %>% filter(time > ymd("2022-04-06") & time < ymd("2022-04-08"))
+
+idx <- seq(1, nrow(bolt_4.06.2.1), by = 100)
+bolt_4.06.2.1_thin <- bolt_4.06.2.1[idx,]
+
+range(bolt_4.06.2.1_thin$time)
+
+# layout(cbind(1:3))
+# par(mar = c(2,5,2,2))
+
+plot(bolt_4.06.2.1_thin$time+5*3600, bolt_4.06.2.1_thin$x, type = "l", xlab = "", ylab = "x")
+abline(v = video_created, col = 2)
+abline(v = video_created-video_duration, col = 4)
+
+a06.2.1_bolt$BehaviorNum <- factor(a06.2.1_bolt$Behavior)
+
+plot(bolt_4.06.2.1_thin$time+5*3600, bolt_4.06.2.1_thin$x, type = "l", xlab = "", ylab = "x",
+     xlim = c(video_created-video_duration, video_created), ylim = c(-4,6))
+points(a06.2.1_bolt$Time+video_created-video_duration, a06.2.1_bolt$Behavior %>% factor)
+segments(x0 = a06.2.1_bolt$Time[a06.2.1_bolt$Status == "START"]+video_created-video_duration, 
+         x1 = a06.2.1_bolt$Time[a06.2.1_bolt$Status == "STOP"]+video_created-video_duration,
+         y0 = a06.2.1_bolt$BehaviorNum[a06.2.1_bolt$Status == "START"] %>% as.numeric, 
+         y1 = a06.2.1_bolt$BehaviorNum[a06.2.1_bolt$Status == "STOP"] %>% as.numeric)
+
+
+
+# abline(v = video_created, col = 2)
+# abline(v = video_created-video_duration, col = 4)
+lines(bolt_4.06.2.1_thin$time-5*3600, bolt_4.06.2.1_thin$y, col = 2)
+lines(bolt_4.06.2.1_thin$time-5*3600, bolt_4.06.2.1_thin$z, col = 3)
+
+a06.2.1_bolt_mlt <- data.frame(start = a06.2.1_bolt$Time[a06.2.1_bolt$Status == "START"]+video_created-video_duration,
+                               stop = a06.2.1_bolt$Time[a06.2.1_bolt$Status == "STOP"]+video_created-video_duration,
+                               z = a06.2.1_bolt$Behavior[a06.2.1_bolt$Status == "START"] %>% factor %>% as.numeric)
+
+time_shift <- 5*3600
+
+ggplot(a06.2.1_bolt_mlt, aes(x = start, 
+                             xend = stop, 
+                             y = z+1, yend = z+1, col = factor(z)))+
+  ylim(c(-4,4))+
+  xlim(c(min(a06.2.1_bolt_mlt$start)-1000, max(a06.2.1_bolt_mlt$stop)+1000))+
+  geom_segment(size = 2)+
+  geom_line(data = bolt_4.06.2.1_thin, aes(x = time+time_shift, y = z), col = 1, inherit.aes = FALSE)+
+  geom_line(data = bolt_4.06.2.1_thin, aes(x = time+time_shift, y = y), col = 2, inherit.aes = FALSE)+
+  geom_line(data = bolt_4.06.2.1_thin, aes(x = time+time_shift, y = x), col = 3, inherit.aes = FALSE)
+
+
+```
 ### Part 3.1
 ```{r}
 
