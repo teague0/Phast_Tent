@@ -5,25 +5,35 @@ output: html_document
 
 # load libraries
 ```{r}
+# install.packages("pacman")
 library(pacman)
-p_load(lubridate, data.table, tidyverse, dplyr, accelerateR)
+p_load(lubridate, # date time function 
+       data.table, # easier for extreme 
+       tidyverse, 
+       dplyr, 
+       vcd, # assocation statistics
+       install = TRUE # accelerometer - summarizing accelerometer data
+       )
 ```
 
 
-# load video annotations and plot bat behaviors
+## load video annotations and plot bat behaviors
 ```{r}
 # change to the path to your exported files
-path <- "../../../../Dropbox/MPI/Dechmann_Lab/Johannes/boris_files/ExportedData/"
+path <- "C:/Users/ehumre/Dropbox/MPI/Dechmann_Lab/Johannes Bernecker/boris_files/ExportedData/exported_csv/"
 files <- list.files(path, pattern = ".csv")
 
 video_data <- data.frame()
 
 i = 1
+
 for(i in 1:length(files)){
   a <- data.table::fread(paste0(path, files[i]), header = TRUE)
   # which bats are active?
   paste0(a$Behavior, a$Subject) %>% table
+  
   a <- a[order(a$Subject, a$Behavior, a$Time),]
+  
   a_mlt <- data.frame(start = a$Time[a$Status == "START"],
                             stop = a$Time[a$Status == "STOP"],
                             behavior = a$Behavior[a$Status == "START"],
@@ -45,7 +55,7 @@ for(i in 1:length(files)){
 There are a few cases of behaviors overlapping. You need to clean this up in BORIS.
 
 
-# summarise behaviors in videos
+## summarise behaviors in videos
 ```{r}
 video_data %>% group_by(behavior, subject, file) %>% summarise(total_duration = sum(duration)) -> video_data_sum
 
@@ -56,70 +66,100 @@ ggplot(video_data_sum, aes(x = behavior %>% factor, y = total_duration, col = su
 
 ```
 
+# Here are some ideas for data analysis: 
+## Do bats sleep more or less in groups?
 
-#Here are some ideas for data analysis: 
---- Do bats sleep more or less in groups?
 Check videos to see which bats are associated with each other
 ```{r}
 
-
+group_bats <- c("heart", "moon", "star")
+solo_bat <- "bolt"
 
 
 ```
 
 
 
---- How synchronized are their behaviors?
+##  How synchronized are their behaviors?
+```{r}
+behavior_sync <- function(file, bat1, bat2){
+  b1 <- video_data[which(video_data$file == file & video_data$subject == bat1),]
+  b2 <- video_data[which(video_data$file == file & video_data$subject == bat2),]
+
+  # expand the data into behaviors for each individual for each frame
+  b1_full <- data.frame()  
+  k = 1
+  for(k in 1:nrow(b1)){
+    temp <- data.frame(time = seq(b1$start[k], b1$stop[k], by = 1/50),
+                       subject = b1$subject[k],
+                       behavior = b1$behavior[k])
+    b1_full <- rbind(b1_full, temp)
+  }
+  
+  b2_full <- data.frame()  
+  k = 1
+  for(k in 1:nrow(b2)){
+    temp <- data.frame(time = seq(b2$start[k], b2$stop[k], by = 1/50),
+                       subject = b2$subject[k],
+                       behavior = b2$behavior[k])
+    b2_full <- rbind(b2_full, temp)
+  }
+  
+  b1_full <- b1_full[order(b1_full$time),]
+  # duplicated(b1_full$time)
+  
+  b2_full <- b2_full[order(b2_full$time),]
+  
+  b1_b2 <- left_join(b1_full, b2_full, "time")
+  
+  b1_b2$behavior.x.num <- b1_b2$behavior.x %>% factor(levels = c(unique(video_data_sum$behavior))) %>% as.numeric()
+  b1_b2$behavior.y.num <- b1_b2$behavior.y %>% factor(levels = c(unique(video_data_sum$behavior))) %>% as.numeric()
+  
+  summary(b1_b2)
+  
+  # cross correlation function will tell us at what lag and how strongly correlated the behaviors are for a pair of individuals
+  b1_b2 <- na.omit(b1_b2)
+  return(b1_b2)
+  
+  p <- ggplot(b1_b2)+
+    geom_point(aes(time, behavior.x), size = 3)+
+    geom_point(aes(time, behavior.y), col = 2)
+  print(p)
+  
+  c <- ccf(b1_b2$behavior.x.num, b1_b2$behavior.y.num, lag = 1000)
+  
+  # time lag between individuals
+  print(paste0("Time lag ", c$lag[c$acf %>% which.max]/50, " sec"))
+  
+}
+
+```
+
+
 ```{r}
 files <- unique(video_data$file)
 bats <- unique(video_data$subject)
 
-for(i in 1:length(files)){
-  for(j in 1:length(bats)){
-    b1 <- video_data[which(video_data$file == files[i] & video_data$subject == bats[j]),]
-    b2 <- video_data[which(video_data$file == files[i] & video_data$subject == bats[j+1]),]
-    
-    # expand the data into behaviors for each individual for each frame
-    b1_full <- data.frame()  
-    k = 1
-    for(k in 1:nrow(b1)){
-      temp <- data.frame(time = seq(b1$start[k], b1$stop[k], by = 1/50),
-                         subject = b1$subject[k],
-                         behavior = b1$behavior[k])
-      b1_full <- rbind(b1_full, temp)
-    }
-    
-    b2_full <- data.frame()  
-    k = 1
-    for(k in 1:nrow(b2)){
-      temp <- data.frame(time = seq(b2$start[k], b2$stop[k], by = 1/50),
-                         subject = b2$subject[k],
-                         behavior = b2$behavior[k])
-      b2_full <- rbind(b2_full, temp)
-    }
-    
-    
-    plot(b1_full$time, b1_full$behavior %>% factor, ylim = c(0,7))
-    points(b2_full$time, b2_full$behavior %>% factor %>% as.numeric +0.5, col = 2)
-    
-    b1_full <- b1_full[order(b1_full$time),]
-    duplicated(b1_full$time)
-    
-    b2_full <- b2_full[order(b2_full$time),]
-    
-    b1_b2 <- left_join(b1_full, b2_full, "time")
-    b1_b2$behavior.x.num <- b1_b2$behavior.x %>% factor %>% as.numeric()
-    b1_b2$behavior.y.num <- b1_b2$behavior.y %>% factor %>% as.numeric()
-    
-    summary(b1_b2)
-    
-    # cross correlation function will tell us at what lag and how strongly correlated the behaviors are for a pair of individuals
-    ccf(b1_b2$behavior.x.num, b1_b2$behavior.y.num)
-    # the cross correlation function won't work until the behaviors are not overlapping within an individual
-  }
-}
+sync1 <- behavior_sync(files[1], bat1 = bats[1], bats[3])
 
+sync1$behavior.x.num %>% unique
+sync1$behavior.y.num %>% unique
 
+# index out of frame behaviors and remove them
+idx <- which(sync1$behavior.x.num == 8 | sync1$behavior.y.num == 8)
+
+ifelse(length(idx) > 0, sync_in_frame <- sync1[-idx,], sync_in_frame <- sync1)
+
+p <- ggplot(sync_in_frame)+
+  geom_point(aes(time, behavior.x), size = 3)+
+  geom_point(aes(time, behavior.y), col = 2)
+print(p)
+
+# what is the significance of the behavior match?
+t <- table(sync_in_frame$behavior.x, sync_in_frame$behavior.y)
+t
+assocstats(t)
 ```
+
 
 
