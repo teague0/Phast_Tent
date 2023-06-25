@@ -20,7 +20,7 @@ p_load(lubridate, # date time function
 ## load video annotations and plot bat behaviors
 ```{r}
 # change to the path to your exported files
-path <- "C:/Users/ehumre/Dropbox/MPI/Dechmann_Lab/Johannes Bernecker/boris_files/ExportedData/exported_csv/"
+path <- "../../../../Dropbox/MPI/Dechmann_Lab/Johannes Bernecker/boris_files/ExportedData/updated/"
 files <- list.files(path, pattern = ".csv")
 
 video_data <- data.frame()
@@ -51,8 +51,7 @@ for(i in 1:length(files)){
 
 
 ```
-
-There are a few cases of behaviors overlapping. You need to clean this up in BORIS.
+Looks good! I don't think there are any overlapping files
 
 
 ## summarise behaviors in videos
@@ -135,11 +134,12 @@ behavior_sync <- function(file, bat1, bat2){
 
 ```
 
-
+You can iteratively compare pairs of bats in each file
 ```{r}
 files <- unique(video_data$file)
 bats <- unique(video_data$subject)
 
+# here we are comparing bats 1 and 3 in file 1
 sync1 <- behavior_sync(files[1], bat1 = bats[1], bats[3])
 
 sync1$behavior.x.num %>% unique
@@ -157,9 +157,12 @@ print(p)
 
 # what is the significance of the behavior match?
 t <- table(sync_in_frame$behavior.x, sync_in_frame$behavior.y)
-t
-assocstats(t)
+
+# this calculates association statistics between pairs of bats
+a <- assocstats(t)
+
 ```
 
 
+You can then compare if these assocations are consistent across videos, time of day, etc.
 
