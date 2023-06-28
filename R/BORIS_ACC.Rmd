@@ -6,7 +6,7 @@ date: "2023-06-15"
 
 ```{r}
 library(pacman)
-p_load(lubridate, data.table, tidyverse, dplyr, accelerateR, roll)
+p_load(lubridate, data.table, tidyverse, dplyr, accelerateR, roll, randomForest)
 ```
 
 # load acceleration data
@@ -37,16 +37,16 @@ moon$time <- dmy_hms(moon$timestamp)
 # OBDA and VeDBA
 ```{r}
 vedba <- function(acc){
-  x0 <- roll_mean(acc$x, width = 25, na_restore = TRUE)
-  y0 <- roll_mean(acc$y, width = 25, na_restore = TRUE)
-  z0 <- roll_mean(acc$z, width = 25, na_restore = TRUE)
+  acc$x0 <- roll_mean(acc$x, width = 25, na_restore = TRUE)
+  acc$y0 <- roll_mean(acc$y, width = 25, na_restore = TRUE)
+  acc$z0 <- roll_mean(acc$z, width = 25, na_restore = TRUE)
   
-  x1 <- acc$x - x0
-  y1 <- acc$y - y0
-  z1 <- acc$z - z0
+  acc$x1 <- acc$x - acc$x0
+  acc$y1 <- acc$y - acc$y0
+  acc$z1 <- acc$z - acc$z0
   
-  acc$ODBA <- abs(x1) + abs(y1) + abs(z1)
-  acc$VeDBA <- sqrt((x1)^2 + (y1)^2 + (z1)^2)
+  acc$ODBA <- abs(acc$x1) + abs(acc$y1) + abs(acc$z1)
+  acc$VeDBA <- sqrt((acc$x1)^2 + (acc$y1)^2 + (acc$z1)^2)
   return(acc)
 }
 
@@ -64,10 +64,10 @@ bolt$ODBA[1:100000] %>% plot(type = "l")
 with(bolt[1:100000], plot(ODBA, VeDBA))
 ```
 
-
+#time of acc
 ```{r}
-hour(bolt$time[which(bolt$z > 3.9)]) %>% as.numeric() %>% summary
-with(bolt[bolt$z > 3.9,], plot(hour(time), z))
+hour(bolt$time[bolt$ODBA > 1] - 5*3600) %>% hist
+
 ```
 
 
@@ -98,28 +98,26 @@ for(i in 1:(length(files))){
 ### Part 1
 ### videos created
 ```{r}
-video_files <- list.files(path = "H:/Panama22/FlightCageBocas/Video/050422/Part1/", pattern = ".MP4", full.names = TRUE)
+video_files_5.1 <- list.files(path = "H:/Panama22/FlightCageBocas/Video/050422/Part1/", pattern = ".MP4", full.names = TRUE)
 
-videos_modified <- fs::file_info(video_files)$modification_time
-videos_created <- fs::file_info(video_files)$birth_time
+video_time_5.1 <- base::file.info(video_files_5.1)$mtime
 
-tz(videos_modified) <- "UTC"
-tz(videos_created) <- "UTC"
+tz(video_time_5.1) <- "UTC"
 
 
 ```
 
 #### acc check function
 ```{r}
-acc_check <- function(video_created, video_duration, 
+acc_check <- function(video_time, video_duration, 
                       acc, video, 
                       start, end, buffer = 1000, time_shift, acc_adj, thick = FALSE){
   acc_date <- acc %>% filter(time > start & time < end)
   idx <- seq(1, nrow(acc_date), by = 100)
   acc_date_thin <- acc_date[idx,]
   
-  video_mlt <- data.frame(start = video$Time[video$Status == "START"]+video_created-video_duration,
-                               stop = video$Time[video$Status == "STOP"]+video_created-video_duration,
+  video_mlt <- data.frame(start = video$Time[video$Status == "START"]+video_time-video_duration,
+                               stop = video$Time[video$Status == "STOP"]+video_time-video_duration,
                                behavior = video$Behavior[video$Status == "START"] %>% factor,
                                z = video$Behavior[video$Status == "START"] %>% factor %>% as.numeric)
   p <- ggplot(video_mlt, aes(x = start, # "2022-04-07 00:09:28 CEST"
@@ -145,13 +143,53 @@ acc_check <- function(video_created, video_duration,
     geom_segment(size = 2)+
     # geom_line(data = acc_date, aes(x = time-time_shift, y = z), col = 1, inherit.aes = FALSE)+
     # geom_line(data = acc_date_thin, aes(x = time-time_shift, y = y), col = 2, inherit.aes = FALSE)+
-    geom_line(data = acc_date, aes(x = time-time_shift+acc_adj, y = x), col = 3, inherit.aes = FALSE)+
-      geom_line(data = acc_date, aes(x = time-time_shift+acc_adj, y = VeDBA), col = 3, inherit.aes = FALSE)
+    geom_line(data = acc_date, aes(x = time-time_shift+acc_adj, y = x), col = 1, inherit.aes = FALSE)+
+      geom_line(data = acc_date, aes(x = time-time_shift+acc_adj, y = VeDBA), col = 4, inherit.aes = FALSE)
     print(p_thick)
   }
 }
+```
 
+#### acc add behavior
+```{r}
+acc_check(video_time = video_time_5.1[3],  
+          video_duration = video_duration_05.1.3,
+          acc = star, video = a05.1.3_star, 
+          start = ymd("2022-04-06"), end = ymd("2022-04-08"),
+          buffer = 100,
+          time_shift = -2*3600, acc_adj = -5, thick = TRUE)
 
+# acc <- star
+# acc$behavior <- NA
+
+acc_add_behavior <- function(video_time, 
+                             video_duration,
+                             acc, video, 
+                             time_shift, acc_adj){
+  acc$video_time <- acc$time- time_shift + acc_adj
+  video_mlt <- data.frame(start = video$Time[video$Status == "START"]+video_time-video_duration,
+                               stop = video$Time[video$Status == "STOP"]+video_time-video_duration,
+                               behavior = video$Behavior[video$Status == "START"] %>% factor,
+                               z = video$Behavior[video$Status == "START"] %>% factor %>% as.numeric)
+  i = 1
+  for(i in 1:nrow(video_mlt)){
+    idx <- which(acc$video_time > video_mlt$start[i] & acc$video_time < video_mlt$stop[i])
+    acc$behavior[idx] <- as.character(video_mlt$behavior[i])
+  }
+  return(acc)
+}
+```
+
+```{r}
+moon$behavior <- NA
+star$behavior <- NA
+heart$behavior <- NA
+bolt$behavior <- NA
+
+acc_add_behavior(video_time = video_time_5.1[3],  
+              video_duration = video_duration_05.1.3,
+              acc = star, video = a05.1.3_star,  
+              time_shift = -2*3600, acc_adj = -5)
 
 ```
 
@@ -180,33 +218,81 @@ a05.1.1_star <- a05.1.1 %>% filter(Subject == "star")
 
 #### look at moon
 ```{r}
-acc_check(video_created = videos_created[1], 
+acc_check(video_time = video_time_5.1[1], 
           video_duration = video_duration_05.1.1,
           acc = moon, video = a05.1.1_moon, 
           start = ymd("2022-04-06"), end = ymd("2022-04-08"),
-          buffer = -100,
-          time_shift = 5*3600, acc_adj = -5, thick = FALSE)
+          buffer = 100,
+          time_shift = -2*3600, acc_adj = -5, thick = FALSE)
 
+```
+##### add acc behav
+```{r}
+moon <- acc_add_behavior(video_time = video_time_5.1[1],  
+              video_duration = video_duration_05.1.1,
+              acc = moon, video = a05.1.1_moon,  
+              time_shift = -2*3600, acc_adj = -5)
 ```
 
 
 #### look at star
 
 ```{r}
-acc_check(video_created = videos_created[1],  
+acc_check(video_time = video_time_5.1[1], 
           video_duration = video_duration_05.1.1,
           acc = star, video = a05.1.1_star, 
           start = ymd("2022-04-06"), end = ymd("2022-04-08"),
-          buffer = 1000,
-          time_shift = 5*3600, acc_adj = -5, thick = FALSE)
+          buffer = 100,
+          time_shift = -2*3600, acc_adj = 0, thick = FALSE)
+```
+##### add acc behav
+```{r}
+star <- acc_add_behavior(video_time = video_time_5.1[1],  
+              video_duration = video_duration_05.1.1,
+              acc = star, video = a05.1.1_star,  
+              time_shift = -2*3600, acc_adj = -5)
 ```
 
 
 #### look at heart
+```{r}
+acc_check(video_time = video_time_5.1[1], 
+          video_duration = video_duration_05.1.1,
+          acc = heart, video = a05.1.1_heart, 
+          start = ymd("2022-04-06"), end = ymd("2022-04-08"),
+          buffer = 100,
+          time_shift = -2*3600, acc_adj = -5, thick = FALSE)
+```
+
+##### add acc behav
+```{r}
+heart <- acc_add_behavior(video_time = video_time_5.1[1],  
+              video_duration = video_duration_05.1.1,
+              acc = heart, video = a05.1.1_heart,  
+              time_shift = -2*3600, acc_adj = -5)
+```
+
+
+#### look at bolt
+```{r}
+acc_check(video_time = video_time_5.1[1], 
+          video_duration = video_duration_05.1.1,
+          acc = bolt, video = a05.1.1_bolt, 
+          start = ymd("2022-04-06"), end = ymd("2022-04-08"),
+          buffer = 100,
+          time_shift = -2*3600, acc_adj = 0, thick = FALSE)
+```
+
+##### add acc behav
+```{r}
+bolt <- acc_add_behavior(video_time = video_time_5.1[1],  
+              video_duration = video_duration_05.1.1,
+              acc = bolt, video = a05.1.1_bolt,  
+              time_shift = -2*3600, acc_adj = -5)
+```
 
 ### Part 1.2
 ```{r}
-
 a05.1.2 <- data.table::fread("../../../../Dropbox/MPI/Dechmann_Lab/Johannes Bernecker/boris_files/ExportedData/updated/050422_1_2.csv", header = TRUE)
 paste0(a05.1.2$Behavior, a05.1.2$Subject) %>% table
 video_duration_05.1.2 <- a05.1.2$`Total length`[1]
@@ -230,33 +316,73 @@ a05.1.2_star <- a05.1.2 %>% filter(Subject == "star")
 
 #### look at moon
 ```{r}
-acc_check(video_created = videos_created[2],  
+acc_check(video_time = video_time_5.1[2],  
           video_duration = video_duration_05.1.2,
           acc = moon, video = a05.1.2_moon, 
           start = ymd("2022-04-06"), end = ymd("2022-04-08"),
           buffer = 1000,
-          time_shift = 5*3600, acc_adj = -5, thick = FALSE)
+          time_shift = -2*3600, acc_adj = -5, thick = FALSE)
 ```
 
+##### add acc behav
+```{r}
+moon <- acc_add_behavior(video_time = video_time_5.1[1],  
+              video_duration = video_duration_05.1.1,
+              acc = moon, video = a05.1.1_moon,  
+              time_shift = -2*3600, acc_adj = -5)
+```
 
 #### look at star
 ```{r}
-acc_check(video_created = videos_created[2], 
+acc_check(video_time = video_time_5.1[2],  
           video_duration = video_duration_05.1.2,
           acc = star, video = a05.1.2_star, 
           start = ymd("2022-04-06"), end = ymd("2022-04-08"),
-          buffer = 3000,
-          time_shift = 5*3600, acc_adj = 0, thick = FALSE)
+          buffer = 10,
+          time_shift = -2*3600, acc_adj = -5, thick = FALSE)
+```
+
+##### add acc behav
+```{r}
+star <- acc_add_behavior(video_time = video_time_5.1[2],  
+              video_duration = video_duration_05.1.2,
+              acc = star, video = a05.1.2_star,  
+              time_shift = -2*3600, acc_adj = -5)
 ```
 
 #### look at heart
 ```{r}
-acc_check(video_created = videos_created[2], 
+acc_check(video_time = video_time_5.1[2],  
           video_duration = video_duration_05.1.2,
           acc = heart, video = a05.1.2_heart, 
           start = ymd("2022-04-06"), end = ymd("2022-04-08"),
           buffer = 1000,
-          time_shift = 5*3600, acc_adj = 0, thick = FALSE)
+          time_shift = -2*3600, acc_adj = 0, thick = TRUE)
+```
+
+##### add acc behav
+```{r}
+heart <- acc_add_behavior(video_time = video_time_5.1[2],  
+              video_duration = video_duration_05.1.2,
+              acc = heart, video = a05.1.2_heart,  
+              time_shift = -2*3600, acc_adj = -5)
+```
+
+#### look at bolt
+```{r}
+acc_check(video_time = video_time_5.1[2],  
+          video_duration = video_duration_05.1.2,
+          acc = bolt, video = a05.1.2_bolt, 
+          start = ymd("2022-04-06"), end = ymd("2022-04-08"),
+          buffer = -100,
+          time_shift = -2*3600, acc_adj = 0, thick = TRUE)
+```
+##### add acc behav
+```{r}
+bolt <- acc_add_behavior(video_time = video_time_5.1[2],  
+              video_duration = video_duration_05.1.2,
+              acc = bolt, video = a05.1.2_bolt,  
+              time_shift = -2*3600, acc_adj = -5)
 ```
 
 ### Part 1.3
@@ -283,67 +409,95 @@ a05.1.3_bolt <- a05.1.3 %>% filter(Subject == "light bolt")
 a05.1.3_moon <- a05.1.3 %>% filter(Subject == "moon")
 a05.1.3_heart <- a05.1.3 %>% filter(Subject == "heart")
 a05.1.3_star <- a05.1.3 %>% filter(Subject == "star")
-
-a05.1.3_moon_mlt <- data.frame(start = a05.1.3_moon$Time[a05.1.3_moon$Status == "START"],
-                               stop = a05.1.3_moon$Time[a05.1.3_moon$Status == "STOP"],
-                               behavior = a05.1.3_moon$Behavior[a05.1.3_moon$Status == "START"])
-
-ggplot(a05.1.3_moon_mlt, aes(x = start, xend = stop, y = behavior, yend = behavior, col = behavior))+ 
-  geom_segment(size = 2)
-
 ```
 
 #### look at moon
+
 ```{r}
-acc_check(video_created = videos_created[3], 
+acc_check(video_time = video_time_5.1[3],  
           video_duration = video_duration_05.1.3,
           acc = moon, video = a05.1.3_moon, 
           start = ymd("2022-04-06"), end = ymd("2022-04-08"),
-          buffer = 10,
-          time_shift = 5*3600, acc_adj = -5, thick = TRUE)
+          buffer = 100,
+          time_shift = -2*3600, acc_adj = -5, thick = TRUE)
 ```
 
+##### add acc behav
+```{r}
+# moon <- acc_add_behavior(video_time = video_time_5.1[3],  
+#               video_duration = video_duration_05.1.3,
+#               acc = moon, video = a05.1.3_moon,  
+#               time_shift = -2*3600, acc_adj = -5)
+```
 
 #### look at star
 ```{r}
-acc_check(video_created = videos_created[3], 
+acc_check(video_time = video_time_5.1[3],  
           video_duration = video_duration_05.1.3,
           acc = star, video = a05.1.3_star, 
           start = ymd("2022-04-06"), end = ymd("2022-04-08"),
-          buffer = 500,
-          time_shift = 5*3600, acc_adj = 100, thick = FALSE)
+          buffer = 100,
+          time_shift = -2*3600, acc_adj = -5, thick = TRUE)
 ```
 
+##### add acc behav
+```{r}
+star <- acc_add_behavior(video_time = video_time_5.1[3],
+              video_duration = video_duration_05.1.3,
+              acc = star, video = a05.1.3_star,
+              time_shift = -2*3600, acc_adj = -5)
+```
 
 #### look at heart
 ```{r}
-acc_check(video_created = videos_created[3], 
+acc_check(video_time = video_time_5.1[3],  
           video_duration = video_duration_05.1.3,
           acc = heart, video = a05.1.3_heart, 
           start = ymd("2022-04-06"), end = ymd("2022-04-08"),
           buffer = 10,
-          time_shift = 5*3600, acc_adj = -55, thick = TRUE)
+          time_shift = -2*3600, acc_adj = -5, thick = TRUE)
 ```
 
+##### add acc behav
+```{r}
+heart <- acc_add_behavior(video_time = video_time_5.1[3],
+              video_duration = video_duration_05.1.3,
+              acc = heart, video = a05.1.3_heart,
+              time_shift = -2*3600, acc_adj = -5)
+```
+
+#### look at bolt
+```{r}
+acc_check(video_time = video_time_5.1[3],  
+          video_duration = video_duration_05.1.3,
+          acc = bolt, video = a05.1.3_bolt, 
+          start = ymd("2022-04-06"), end = ymd("2022-04-08"),
+          buffer = 100,
+          time_shift = -2*3600, acc_adj = -5, thick = TRUE)
+```
+
+##### add acc behav
+```{r}
+# bolt <- acc_add_behavior(video_time = video_time_5.1[3],  
+#               video_duration = video_duration_05.1.3,
+#               acc = moon, video = a05.1.3_bolt,  
+#               time_shift = -2*3600, acc_adj = -5)
+```
 
 ### Part 2
 ### videos created
 ```{r}
-video_files_05.2 <- list.files(path = "H:/Panama22/FlightCageBocas/Video/050422/Part2/", pattern = ".MP4", full.names = TRUE)
+video_files_5.2 <- list.files(path = "H:/Panama22/FlightCageBocas/Video/050422/Part2/", pattern = ".MP4", full.names = TRUE)
 
-videos_modified_05.2 <- fs::file_info(video_files_05.2)$modification_time
-videos_created_05.2 <- fs::file_info(video_files_05.2)$birth_time
+video_time_5.2 <- base::file.info(video_files_5.2)$mtime
 
-tz(videos_created_05.2) <- "UTC"
-tz(videos_modified_05.2) <- "UTC"
+tz(video_time_5.2) <- "UTC"
 ```
 ### Part 2.1
 ```{r}
-
-
 a05.2.1 <- data.table::fread("../../../../Dropbox/MPI/Dechmann_Lab/Johannes Bernecker/boris_files/ExportedData/updated/050422_2_1.csv", header = TRUE)
 # paste0(a05.1.1$Behavior, a05.1.1$Subject) %>% table
-video_duration_05.2 <- a05.2.1$`Total length`[1]
+video_duration_05.2.1 <- a05.2.1$`Total length`[1]
 
 a05.2.1 <- a05.2.1[order(a05.2.1$Subject, a05.2.1$Behavior, a05.2.1$Time),]
 a05.2.1_mlt <- data.frame(start = a05.2.1$Time[a05.2.1$Status == "START"],
@@ -364,58 +518,93 @@ a05.2.1_star <- a05.2.1 %>% filter(Subject == "star")
 
 #### look at moon
 ```{r}
-acc_check(video_created = videos_modified_05.2[1],
-            #videos_created_05.2[1], 
-          video_duration = video_duration_05.2,
+acc_check(video_time = video_time_5.2[1],
+          video_duration = video_duration_05.2.1,
           acc = moon, video = a05.2.1_moon, 
           start = ymd("2022-04-06"), end = ymd("2022-04-08"),
-          buffer = 5000,
-          time_shift = 5*3600, acc_adj = 0, thick = FALSE)
+          buffer = 50,
+          time_shift = -2*3600, acc_adj = -5, thick = FALSE)
+```
+
+##### add acc behav
+```{r}
+moon <- acc_add_behavior(video_time = video_time_5.2[1],
+              video_duration = video_duration_05.2.1,
+              acc = moon, video = a05.2.1_moon,
+              time_shift = -2*3600, acc_adj = -5)
 ```
 
 #### look at star
 ```{r}
-acc_check(video_created = videos_created[1], 
+acc_check(video_time = video_time_5.2[1],
+          video_duration = video_duration_05.2.1,
           acc = star, video = a05.2.1_star, 
           start = ymd("2022-04-06"), end = ymd("2022-04-08"),
-          buffer = 10000,
-          time_shift = 5*3600, acc_adj = -2000, thick = FALSE)
+          buffer = 50,
+          time_shift = -2*3600, acc_adj = -5, thick = FALSE)
 ```
+##### add acc behav
+```{r}
+star <- acc_add_behavior(video_time = video_time_5.2[1],
+              video_duration = video_duration_05.2.1,
+              acc = star, video = a05.2.1_star,
+              time_shift = -2*3600, acc_adj = -5)
+```
+
 
 #### look at heart
 ```{r}
-acc_check(video_created = videos_created[1], 
+acc_check(video_time = video_time_5.2[1],
+          video_duration = video_duration_05.2.1,
           acc = heart, video = a05.2.1_heart, 
           start = ymd("2022-04-06"), end = ymd("2022-04-08"),
-          buffer = -500,
-          time_shift = 5*3600, acc_adj = 2000, thick = FALSE)
+          buffer = 50,
+          time_shift = -2*3600, acc_adj = -5, thick = FALSE)
 ```
+##### add acc behav
+```{r}
+heart<- acc_add_behavior(video_time = video_time_5.2[1],
+              video_duration = video_duration_05.2.1,
+              acc = heart, video = a05.2.1_heart,
+              time_shift = -2*3600, acc_adj = -5)
+```
+
 
 #### look at bolt
 ```{r}
-acc_check(video_created = videos_created[1], 
+acc_check(video_time = video_time_5.2[1],
+          video_duration = video_duration_05.2.1,
           acc = bolt, video = a05.2.1_bolt, 
           start = ymd("2022-04-06"), end = ymd("2022-04-08"),
-          buffer = 5000,
-          time_shift = 5*3600, acc_adj = 0, thick = FALSE)
+          buffer = -500,
+          time_shift = -2*3600, acc_adj = -5, thick = FALSE)
+```
+
+##### add acc behav
+```{r}
+bolt<- acc_add_behavior(video_time = video_time_5.2[1],
+              video_duration = video_duration_05.2.1,
+              acc = bolt, video = a05.2.1_bolt,
+              time_shift = -2*3600, acc_adj = -5)
 ```
 
 
 ## 06/04/22 
-### videos created
+### Part 1
+#### videos created
 ```{r}
-video_files <- list.files(path = "H:/Panama22/FlightCageBocas/Video/060422/Part1/", pattern = ".MP4", full.names = TRUE)
+video_files_6.1 <- list.files(path = "H:/Panama22/FlightCageBocas/Video/060422/Part1/", pattern = ".MP4", full.names = TRUE)
 
-videos_modified <- fs::file_info(video_files)$modification_time
-videos_created <- fs::file_info(video_files)$birth_time
+video_time_6.1 <- base::file.info(video_files_6.1)$mtime
+
+tz(video_time_6.1) <- "UTC"
 ```
 ### Part 1.1
 ```{r}
 
-video_created <- ymd_hm("2022-04-07 1:11")
 a06.1.1 <- data.table::fread("../../../../Dropbox/MPI/Dechmann_Lab/Johannes Bernecker/boris_files/ExportedData/updated/060422_1_1.csv", header = TRUE)
 paste0(a06.1.1$Behavior, a06.1.1$Subject) %>% table
-video_duration <- a06.1.1$`Total length`[1]
+video_duration_06.1.1 <- a06.1.1$`Total length`[1]
 
 a06.1.1 <- a06.1.1[order(a06.1.1$Subject, a06.1.1$Behavior, a06.1.1$Time),]
 a06.1.1_mlt <- data.frame(start = a06.1.1$Time[a06.1.1$Status == "START"],
@@ -436,187 +625,90 @@ a06.1.1_star <- a06.1.1 %>% filter(Subject == "star")
 
 #### look at moon
 ```{r}
-acc_check(video_created = videos_created[1], 
-          acc = bolt, video = a05.2.1_bolt, 
+acc_check(video_time = video_time_6.1[1],
+          video_duration = video_duration_06.1.1,
+          acc = moon, video = a06.1.1_moon, 
           start = ymd("2022-04-06"), end = ymd("2022-04-08"),
-          buffer = 5000,
-          time_shift = 5*3600, acc_adj = 0, thick = FALSE)
+          buffer = 500,
+          time_shift = -2*3600, acc_adj = -5, thick = TRUE)
 ```
 
+##### add acc behav
 ```{r}
-moon_4.06.1.1 <- moon %>% filter(time > ymd("2022-04-06") & time < ymd("2022-04-08"))
-
-idx <- seq(1, nrow(moon_4.06.1.1), by = 100)
-moon_4.06.1.1_thin <- moon_4.06.1.1[idx,]
-
-range(moon_4.06.1.1_thin$time)
-
-# layout(cbind(1:3))
-# par(mar = c(2,5,2,2))
-
-plot(moon_4.06.1.1_thin$time+5*3600, moon_4.06.1.1_thin$x, type = "l", xlab = "", ylab = "x")
-abline(v = video_created, col = 2)
-abline(v = video_created-video_duration, col = 4)
-
-a06.1.1_moon$BehaviorNum <- factor(a06.1.1_moon$Behavior)
-
-plot(moon_4.06.1.1_thin$time+5*3600, moon_4.06.1.1_thin$x, type = "l", xlab = "", ylab = "x",
-     xlim = c(video_created-video_duration, video_created), ylim = c(-4,6))
-points(a06.1.1_moon$Time+video_created-video_duration, a06.1.1_moon$Behavior %>% factor)
-segments(x0 = a06.1.1_moon$Time[a06.1.1_moon$Status == "START"]+video_created-video_duration, 
-         x1 = a06.1.1_moon$Time[a06.1.1_moon$Status == "STOP"]+video_created-video_duration,
-         y0 = a06.1.1_moon$BehaviorNum[a06.1.1_moon$Status == "START"] %>% as.numeric, 
-         y1 = a06.1.1_moon$BehaviorNum[a06.1.1_moon$Status == "STOP"] %>% as.numeric)
-
-
-
-# abline(v = video_created, col = 2)
-# abline(v = video_created-video_duration, col = 4)
-lines(moon_4.06.1.1_thin$time-5*3600, moon_4.06.1.1_thin$y, col = 2)
-lines(moon_4.06.1.1_thin$time-5*3600, moon_4.06.1.1_thin$z, col = 3)
-
-a06.1.1_moon_mlt <- data.frame(start = a06.1.1_moon$Time[a06.1.1_moon$Status == "START"]+video_created-video_duration,
-                               stop = a06.1.1_moon$Time[a06.1.1_moon$Status == "STOP"]+video_created-video_duration,
-                               z = a06.1.1_moon$Behavior[a06.1.1_moon$Status == "START"] %>% factor %>% as.numeric)
-
-time_shift <- 5*3600
-
-ggplot(a06.1.1_moon_mlt, aes(x = start, 
-                             xend = stop, 
-                             y = z+1, yend = z+1, col = factor(z)))+
-  ylim(c(-4,8))+
-  xlim(c(min(a06.1.1_moon_mlt$start)-2000, max(a06.1.1_moon_mlt$stop)+2000))+
-  geom_segment(size = 2)+
-  geom_line(data = moon_4.06.1.1_thin, aes(x = time-time_shift, y = z), col = 1, inherit.aes = FALSE)+
-  geom_line(data = moon_4.06.1.1_thin, aes(x = time-time_shift, y = y), col = 2, inherit.aes = FALSE)+
-  geom_line(data = moon_4.06.1.1_thin, aes(x = time-time_shift, y = x), col = 3, inherit.aes = FALSE)
+moon <- acc_add_behavior(video_time = video_time_6.1[1],
+              video_duration = video_duration_06.1.1,
+              acc = moon, video = a06.1.1_moon,
+              time_shift = -2*3600, acc_adj = -5)
 ```
 
-```{r}
-ggplot(a06.1.1_moon_mlt, aes(x = start, 
-                             xend = stop, 
-                             y = z+1, yend = z+1, col = factor(z)))+
-  ylim(c(-4,8))+
-  xlim(c(min(a06.1.1_moon_mlt$start), max(a06.1.1_moon_mlt$stop)))+
-  geom_segment(size = 2)+
-  # geom_line(data = moon_4.06.1.1, aes(x = time-time_shift, y = z), col = 1, inherit.aes = FALSE)+
-  # geom_line(data = moon_4.06.1.1_thin, aes(x = time-time_shift, y = y), col = 2, inherit.aes = FALSE)+
-  geom_line(data = moon_4.06.1.1, aes(x = time-time_shift, y = x), col = 3, inherit.aes = FALSE)
-
-min(a06.1.1_moon_mlt$start)
-max(a06.1.1_moon_mlt$stop)
-
-```
 
 #### look at star
 ```{r}
-star_4.06.1.1 <- star %>% filter(time > ymd("2022-04-06") & time < ymd("2022-04-08"))
-
-idx <- seq(1, nrow(star_4.06.1.1), by = 100)
-star_4.06.1.1_thin <- star_4.06.1.1[idx,]
-
-range(star_4.06.1.1_thin$time)
-
-# layout(cbind(1:3))
-# par(mar = c(2,5,2,2))
-
-plot(star_4.06.1.1_thin$time+5*3600, star_4.06.1.1_thin$x, type = "l", xlab = "", ylab = "x")
-abline(v = video_created, col = 2)
-abline(v = video_created-video_duration, col = 4)
-
-a06.1.1_star$BehaviorNum <- factor(a06.1.1_star$Behavior)
-
-plot(star_4.06.1.1_thin$time+5*3600, star_4.06.1.1_thin$x, type = "l", xlab = "", ylab = "x",
-     xlim = c(video_created-video_duration, video_created), ylim = c(-4,6))
-points(a06.1.1_star$Time+video_created-video_duration, a06.1.1_star$Behavior %>% factor)
-segments(x0 = a06.1.1_star$Time[a06.1.1_star$Status == "START"]+video_created-video_duration, 
-         x1 = a06.1.1_star$Time[a06.1.1_star$Status == "STOP"]+video_created-video_duration,
-         y0 = a06.1.1_star$BehaviorNum[a06.1.1_star$Status == "START"] %>% as.numeric, 
-         y1 = a06.1.1_star$BehaviorNum[a06.1.1_star$Status == "STOP"] %>% as.numeric)
-
-
-
-# abline(v = video_created, col = 2)
-# abline(v = video_created-video_duration, col = 4)
-lines(star_4.06.1.1_thin$time-5*3600, star_4.06.1.1_thin$y, col = 2)
-lines(star_4.06.1.1_thin$time-5*3600, star_4.06.1.1_thin$z, col = 3)
-
-a06.1.1_star_mlt <- data.frame(start = a06.1.1_star$Time[a06.1.1_star$Status == "START"]+video_created-video_duration,
-                               stop = a06.1.1_star$Time[a06.1.1_star$Status == "STOP"]+video_created-video_duration,
-                               z = a06.1.1_star$Behavior[a06.1.1_star$Status == "START"] %>% factor %>% as.numeric)
-
-time_shift <- 5*3600
-
-ggplot(a06.1.1_star_mlt, aes(x = start, 
-                             xend = stop, 
-                             y = z+1, yend = z+1, col = factor(z)))+
-  ylim(c(-4,8))+
-  xlim(c(min(a06.1.1_star_mlt$start)-5000, max(a06.1.1_star_mlt$stop)+5000))+
-  geom_segment(size = 2)+
-  geom_line(data = star_4.06.1.1_thin, aes(x = time-time_shift, y = z), col = 1, inherit.aes = FALSE)+
-  geom_line(data = star_4.06.1.1_thin, aes(x = time-time_shift, y = y), col = 2, inherit.aes = FALSE)+
-  geom_line(data = star_4.06.1.1_thin, aes(x = time-time_shift, y = x), col = 3, inherit.aes = FALSE)
-
+acc_check(video_time = video_time_6.1[1],
+          video_duration = video_duration_06.1.1,
+          acc = star, video = a06.1.1_star, 
+          start = ymd("2022-04-06"), end = ymd("2022-04-08"),
+          buffer = 500,
+          time_shift = -2*3600, acc_adj = -5, thick = FALSE)
+```
+##### add acc behav
+```{r}
+star <- acc_add_behavior(video_time = video_time_6.1[1],
+              video_duration = video_duration_06.1.1,
+              acc = star, video = a06.1.1_star,
+              time_shift = -2*3600, acc_adj = -5)
 ```
 
 #### look at heart
 ```{r}
-heart_4.06.1.1 <- heart %>% filter(time > ymd("2022-04-06") & time < ymd("2022-04-08"))
-
-idx <- seq(1, nrow(heart_4.06.1.1), by = 100)
-heart_4.06.1.1_thin <- heart_4.06.1.1[idx,]
-
-range(heart_4.06.1.1_thin$time)
-
-# layout(cbind(1:3))
-# par(mar = c(2,5,2,2))
-
-plot(heart_4.06.1.1_thin$time+5*3600, heart_4.06.1.1_thin$x, type = "l", xlab = "", ylab = "x")
-abline(v = video_created, col = 2)
-abline(v = video_created-video_duration, col = 4)
-
-a06.1.1_heart$BehaviorNum <- factor(a06.1.1_heart$Behavior)
-
-plot(heart_4.06.1.1_thin$time+5*3600, heart_4.06.1.1_thin$x, type = "l", xlab = "", ylab = "x",
-     xlim = c(video_created-video_duration, video_created), ylim = c(-4,6))
-points(a06.1.1_heart$Time+video_created-video_duration, a06.1.1_heart$Behavior %>% factor)
-segments(x0 = a06.1.1_heart$Time[a06.1.1_heart$Status == "START"]+video_created-video_duration, 
-         x1 = a06.1.1_heart$Time[a06.1.1_heart$Status == "STOP"]+video_created-video_duration,
-         y0 = a06.1.1_heart$BehaviorNum[a06.1.1_heart$Status == "START"] %>% as.numeric, 
-         y1 = a06.1.1_heart$BehaviorNum[a06.1.1_heart$Status == "STOP"] %>% as.numeric)
-
-
-
-# abline(v = video_created, col = 2)
-# abline(v = video_created-video_duration, col = 4)
-lines(heart_4.06.1.1_thin$time-5*3600, heart_4.06.1.1_thin$y, col = 2)
-lines(heart_4.06.1.1_thin$time-5*3600, heart_4.06.1.1_thin$z, col = 3)
-
-a06.1.1_heart_mlt <- data.frame(start = a06.1.1_heart$Time[a06.1.1_heart$Status == "START"]+video_created-video_duration,
-                               stop = a06.1.1_heart$Time[a06.1.1_heart$Status == "STOP"]+video_created-video_duration,
-                               z = a06.1.1_heart$Behavior[a06.1.1_heart$Status == "START"] %>% factor %>% as.numeric)
-
-time_shift <- 5*3600
-
-ggplot(a06.1.1_heart_mlt, aes(x = start, 
-                             xend = stop, 
-                             y = z+1, yend = z+1, col = factor(z)))+
-  ylim(c(-4,8))+
-  xlim(c(min(a06.1.1_heart_mlt$start)-3000, max(a06.1.1_heart_mlt$stop)+3000))+
-  geom_segment(size = 2)+
-  geom_line(data = heart_4.06.1.1_thin, aes(x = time-time_shift, y = z), col = 1, inherit.aes = FALSE)+
-  geom_line(data = heart_4.06.1.1_thin, aes(x = time-time_shift, y = y), col = 2, inherit.aes = FALSE)+
-  geom_line(data = heart_4.06.1.1_thin, aes(x = time-time_shift, y = x), col = 3, inherit.aes = FALSE)
-
+acc_check(video_time = video_time_6.1[1],
+          video_duration = video_duration_06.1.1,
+          acc = heart, video = a06.1.1_heart, 
+          start = ymd("2022-04-06"), end = ymd("2022-04-08"),
+          buffer = 500,
+          time_shift = -2*3600, acc_adj = -5, thick = FALSE)
 ```
 
+##### add acc behav
+```{r}
+heart <- acc_add_behavior(video_time = video_time_6.1[1],
+              video_duration = video_duration_06.1.1,
+              acc = heart, video = a06.1.1_heart,
+              time_shift = -2*3600, acc_adj = -5)
+```
 
+#### look at bolt
+```{r}
+acc_check(video_time = video_time_6.1[1],
+          video_duration = video_duration_06.1.1,
+          acc = bolt, video = a06.1.1_bolt, 
+          start = ymd("2022-04-06"), end = ymd("2022-04-08"),
+          buffer = 500,
+          time_shift = -2*3600, acc_adj = -5, thick = FALSE)
+```
+
+##### add acc behav
+```{r}
+bolt <- acc_add_behavior(video_time = video_time_6.1[1],
+              video_duration = video_duration_06.1.1,
+              acc = bolt, video = a06.1.1_bolt,
+              time_shift = -2*3600, acc_adj = -5)
+``` 
+
+### Part 2
+#### videos created
+```{r}
+video_files_6.2 <- list.files(path = "H:/Panama22/FlightCageBocas/Video/060422/Part2/", pattern = ".MP4", full.names = TRUE)
+
+video_time_6.2 <- base::file.info(video_files_6.2)$mtime
+
+tz(video_time_6.2) <- "UTC"
+```
 ### Part 2.1
 ```{r}
-video_created <- ymd_hms("2022-04-06 19:45")
-a06.2.1 <- data.table::fread("../../../../Dropbox/MPI/Dechmann_Lab/Johannes/boris_files/ExportedData/060422_2_1.csv", header = TRUE)
+a06.2.1 <- data.table::fread("../../../../Dropbox/MPI/Dechmann_Lab/Johannes Bernecker/boris_files/ExportedData/updated/060422_2_1.csv", header = TRUE)
 paste0(a06.2.1$Behavior, a06.2.1$Subject) %>% table
-video_duration <- a06.2.1$`Total length`[1]
+video_duration_06.2.1 <- a06.2.1$`Total length`[1]
 
 a06.2.1 <- a06.2.1[order(a06.2.1$Subject, a06.2.1$Behavior, a06.2.1$Time),]
 a06.2.1_mlt <- data.frame(start = a06.2.1$Time[a06.2.1$Status == "START"],
@@ -628,7 +720,7 @@ ggplot(a06.2.1_mlt, aes(x = start, xend = stop, y = behavior, yend = behavior,
   geom_segment(size = 2)+facet_wrap(~subject)
 
 
-a06.2.1_bolt <- a06.2.1 %>% filter(Subject == "bolt")
+a06.2.1_bolt <- a06.2.1 %>% filter(Subject == "light bolt")
 a06.2.1_moon <- a06.2.1 %>% filter(Subject == "moon")
 a06.2.1_heart <- a06.2.1 %>% filter(Subject == "heart")
 a06.2.1_star <- a06.2.1 %>% filter(Subject == "star")
@@ -636,219 +728,90 @@ a06.2.1_star <- a06.2.1 %>% filter(Subject == "star")
 
 #### look at moon
 ```{r}
-moon_4.06.2.1 <- moon %>% filter(time > ymd("2022-04-06") & time < ymd("2022-04-08"))
+acc_check(video_time = video_time_6.2[1],
+          video_duration = video_duration_06.2.1,
+          acc = moon, video = a06.2.1_moon, 
+          start = ymd("2022-04-06"), end = ymd("2022-04-08"),
+          buffer = 100,
+          time_shift = -2*3600, acc_adj = -5, thick = FALSE)
+```
 
-idx <- seq(1, nrow(moon_4.06.2.1), by = 100)
-moon_4.06.2.1_thin <- moon_4.06.2.1[idx,]
-
-range(moon_4.06.2.1_thin$time)
-
-# layout(cbind(1:3))
-# par(mar = c(2,5,2,2))
-
-plot(moon_4.06.2.1_thin$time+5*3600, moon_4.06.2.1_thin$x, type = "l", xlab = "", ylab = "x")
-abline(v = video_created, col = 2)
-abline(v = video_created-video_duration, col = 4)
-
-a06.2.1_moon$BehaviorNum <- factor(a06.2.1_moon$Behavior)
-
-plot(moon_4.06.2.1_thin$time+5*3600, moon_4.06.2.1_thin$x, type = "l", xlab = "", ylab = "x",
-     xlim = c(video_created-video_duration, video_created), ylim = c(-4,6))
-points(a06.2.1_moon$Time+video_created-video_duration, a06.2.1_moon$Behavior %>% factor)
-segments(x0 = a06.2.1_moon$Time[a06.2.1_moon$Status == "START"]+video_created-video_duration, 
-         x1 = a06.2.1_moon$Time[a06.2.1_moon$Status == "STOP"]+video_created-video_duration,
-         y0 = a06.2.1_moon$BehaviorNum[a06.2.1_moon$Status == "START"] %>% as.numeric, 
-         y1 = a06.2.1_moon$BehaviorNum[a06.2.1_moon$Status == "STOP"] %>% as.numeric)
-
-
-
-# abline(v = video_created, col = 2)
-# abline(v = video_created-video_duration, col = 4)
-lines(moon_4.06.2.1_thin$time-5*3600, moon_4.06.2.1_thin$y, col = 2)
-lines(moon_4.06.2.1_thin$time-5*3600, moon_4.06.2.1_thin$z, col = 3)
-
-a06.2.1_moon_mlt <- data.frame(start = a06.2.1_moon$Time[a06.2.1_moon$Status == "START"]+video_created-video_duration,
-                               stop = a06.2.1_moon$Time[a06.2.1_moon$Status == "STOP"]+video_created-video_duration,
-                               z = a06.2.1_moon$Behavior[a06.2.1_moon$Status == "START"] %>% factor %>% as.numeric)
-
-time_shift <- 5*3600+5500
-
-ggplot(a06.2.1_moon_mlt, aes(x = start, 
-                             xend = stop, 
-                             y = z+1, yend = z+1, col = factor(z)))+
-  ylim(c(-4,8))+
-  xlim(c(min(a06.2.1_moon_mlt$start)-1000, max(a06.2.1_moon_mlt$stop)+1000))+
-  geom_segment(size = 2)+
-  geom_line(data = moon_4.06.2.1_thin, aes(x = time-time_shift, y = z), col = 1, inherit.aes = FALSE)+
-  geom_line(data = moon_4.06.2.1_thin, aes(x = time-time_shift, y = y), col = 2, inherit.aes = FALSE)+
-  geom_line(data = moon_4.06.2.1_thin, aes(x = time-time_shift, y = x), col = 3, inherit.aes = FALSE)
-
-
-
+##### add acc behav
+```{r}
+moon <- acc_add_behavior(video_time = video_time_6.2[1],
+              video_duration = video_duration_06.2.1,
+              acc = moon, video = a06.2.1_moon,
+              time_shift = -2*3600, acc_adj = -5)
 ```
 
 #### look at star
 ```{r}
-star_4.06.2.1 <- star %>% filter(time > ymd("2022-04-06") & time < ymd("2022-04-08"))
+acc_check(video_time = video_time_6.2[1],
+          video_duration = video_duration_06.2.1,
+          acc = star, video = a06.2.1_star, 
+          start = ymd("2022-04-06"), end = ymd("2022-04-08"),
+          buffer = 500,
+          time_shift = -2*3600, acc_adj = -5, thick = FALSE)
+```
 
-idx <- seq(1, nrow(star_4.06.2.1), by = 100)
-star_4.06.2.1_thin <- star_4.06.2.1[idx,]
-
-range(star_4.06.2.1_thin$time)
-
-# layout(cbind(1:3))
-# par(mar = c(2,5,2,2))
-
-plot(star_4.06.2.1_thin$time+5*3600, star_4.06.2.1_thin$x, type = "l", xlab = "", ylab = "x")
-abline(v = video_created, col = 2)
-abline(v = video_created-video_duration, col = 4)
-
-a06.2.1_star$BehaviorNum <- factor(a06.2.1_star$Behavior)
-
-plot(star_4.06.2.1_thin$time+5*3600, star_4.06.2.1_thin$x, type = "l", xlab = "", ylab = "x",
-     xlim = c(video_created-video_duration, video_created), ylim = c(-4,6))
-points(a06.2.1_star$Time+video_created-video_duration, a06.2.1_star$Behavior %>% factor)
-segments(x0 = a06.2.1_star$Time[a06.2.1_star$Status == "START"]+video_created-video_duration, 
-         x1 = a06.2.1_star$Time[a06.2.1_star$Status == "STOP"]+video_created-video_duration,
-         y0 = a06.2.1_star$BehaviorNum[a06.2.1_star$Status == "START"] %>% as.numeric, 
-         y1 = a06.2.1_star$BehaviorNum[a06.2.1_star$Status == "STOP"] %>% as.numeric)
-
-
-
-# abline(v = video_created, col = 2)
-# abline(v = video_created-video_duration, col = 4)
-lines(star_4.06.2.1_thin$time-5*3600, star_4.06.2.1_thin$y, col = 2)
-lines(star_4.06.2.1_thin$time-5*3600, star_4.06.2.1_thin$z, col = 3)
-
-a06.2.1_star_mlt <- data.frame(start = a06.2.1_star$Time[a06.2.1_star$Status == "START"]+video_created-video_duration,
-                               stop = a06.2.1_star$Time[a06.2.1_star$Status == "STOP"]+video_created-video_duration,
-                               z = a06.2.1_star$Behavior[a06.2.1_star$Status == "START"] %>% factor %>% as.numeric)
-
-time_shift <- 5*3600+5500
-
-ggplot(a06.2.1_star_mlt, aes(x = start, 
-                             xend = stop, 
-                             y = z+1, yend = z+1, col = factor(z)))+
-  ylim(c(-4,8))+
-  xlim(c(min(a06.2.1_star_mlt$start)-1000, max(a06.2.1_star_mlt$stop)+1000))+
-  geom_segment(size = 2)+
-  geom_line(data = star_4.06.2.1_thin, aes(x = time-time_shift, y = z), col = 1, inherit.aes = FALSE)+
-  geom_line(data = star_4.06.2.1_thin, aes(x = time-time_shift, y = y), col = 2, inherit.aes = FALSE)+
-  geom_line(data = star_4.06.2.1_thin, aes(x = time-time_shift, y = x), col = 3, inherit.aes = FALSE)
-
-
+##### add acc behav
+```{r}
+star <- acc_add_behavior(video_time = video_time_6.2[1],
+              video_duration = video_duration_06.2.1,
+              acc = star, video = a06.2.1_star,
+              time_shift = -2*3600, acc_adj = -5)
 ```
 
 #### look at heart
 ```{r}
-heart_4.06.2.1 <- heart %>% filter(time > ymd("2022-04-06") & time < ymd("2022-04-08"))
+acc_check(video_time = video_time_6.2[1],
+          video_duration = video_duration_06.2.1,
+          acc = heart, video = a06.2.1_heart, 
+          start = ymd("2022-04-06"), end = ymd("2022-04-08"),
+          buffer = 500,
+          time_shift = -2*3600, acc_adj = -5, thick = FALSE)
+```
 
-idx <- seq(1, nrow(heart_4.06.2.1), by = 100)
-heart_4.06.2.1_thin <- heart_4.06.2.1[idx,]
-
-range(heart_4.06.2.1_thin$time)
-
-# layout(cbind(1:3))
-# par(mar = c(2,5,2,2))
-
-plot(heart_4.06.2.1_thin$time+5*3600, heart_4.06.2.1_thin$x, type = "l", xlab = "", ylab = "x")
-abline(v = video_created, col = 2)
-abline(v = video_created-video_duration, col = 4)
-
-a06.2.1_heart$BehaviorNum <- factor(a06.2.1_heart$Behavior)
-
-plot(heart_4.06.2.1_thin$time+5*3600, heart_4.06.2.1_thin$x, type = "l", xlab = "", ylab = "x",
-     xlim = c(video_created-video_duration, video_created), ylim = c(-4,6))
-points(a06.2.1_heart$Time+video_created-video_duration, a06.2.1_heart$Behavior %>% factor)
-segments(x0 = a06.2.1_heart$Time[a06.2.1_heart$Status == "START"]+video_created-video_duration, 
-         x1 = a06.2.1_heart$Time[a06.2.1_heart$Status == "STOP"]+video_created-video_duration,
-         y0 = a06.2.1_heart$BehaviorNum[a06.2.1_heart$Status == "START"] %>% as.numeric, 
-         y1 = a06.2.1_heart$BehaviorNum[a06.2.1_heart$Status == "STOP"] %>% as.numeric)
-
-
-
-# abline(v = video_created, col = 2)
-# abline(v = video_created-video_duration, col = 4)
-lines(heart_4.06.2.1_thin$time-5*3600, heart_4.06.2.1_thin$y, col = 2)
-lines(heart_4.06.2.1_thin$time-5*3600, heart_4.06.2.1_thin$z, col = 3)
-
-a06.2.1_heart_mlt <- data.frame(start = a06.2.1_heart$Time[a06.2.1_heart$Status == "START"]+video_created-video_duration,
-                               stop = a06.2.1_heart$Time[a06.2.1_heart$Status == "STOP"]+video_created-video_duration,
-                               z = a06.2.1_heart$Behavior[a06.2.1_heart$Status == "START"] %>% factor %>% as.numeric)
-
-time_shift <- 5*3600+5500
-
-ggplot(a06.2.1_heart_mlt, aes(x = start, 
-                             xend = stop, 
-                             y = z+1, yend = z+1, col = factor(z)))+
-  ylim(c(-4,8))+
-  xlim(c(min(a06.2.1_heart_mlt$start)-5000, max(a06.2.1_heart_mlt$stop)+5000))+
-  geom_segment(size = 2)+
-  geom_line(data = heart_4.06.2.1_thin, aes(x = time-time_shift, y = z), col = 1, inherit.aes = FALSE)+
-  geom_line(data = heart_4.06.2.1_thin, aes(x = time-time_shift, y = y), col = 2, inherit.aes = FALSE)+
-  geom_line(data = heart_4.06.2.1_thin, aes(x = time-time_shift, y = x), col = 3, inherit.aes = FALSE)
-
-
+##### add acc behav
+```{r}
+heart <- acc_add_behavior(video_time = video_time_6.2[1],
+              video_duration = video_duration_06.2.1,
+              acc = heart, video = a06.2.1_heart,
+              time_shift = -2*3600, acc_adj = -5)
 ```
 
 #### look at bolt
 ```{r}
-bolt_4.06.2.1 <- bolt %>% filter(time > ymd("2022-04-06") & time < ymd("2022-04-08"))
+acc_check(video_time = video_time_6.2[1],
+          video_duration = video_duration_06.2.1,
+          acc = bolt, video = a06.2.1_bolt, 
+          start = ymd("2022-04-06"), end = ymd("2022-04-08"),
+          buffer = 500,
+          time_shift = -2*3600, acc_adj = -5, thick = FALSE)
+```
 
-idx <- seq(1, nrow(bolt_4.06.2.1), by = 100)
-bolt_4.06.2.1_thin <- bolt_4.06.2.1[idx,]
+##### add acc behav
+```{r}
+bolt <- acc_add_behavior(video_time = video_time_6.2[1],
+              video_duration = video_duration_06.2.1,
+              acc = bolt, video = a06.2.1_bolt,
+              time_shift = -2*3600, acc_adj = -5)
+```
 
-range(bolt_4.06.2.1_thin$time)
+### Part 3
+#### videos created
+```{r}
+video_files_6.3 <- list.files(path = "H:/Panama22/FlightCageBocas/Video/060422/Part3/", pattern = ".MP4", full.names = TRUE)
 
-# layout(cbind(1:3))
-# par(mar = c(2,5,2,2))
+video_time_6.3 <- base::file.info(video_files_6.3)$mtime
 
-plot(bolt_4.06.2.1_thin$time+5*3600, bolt_4.06.2.1_thin$x, type = "l", xlab = "", ylab = "x")
-abline(v = video_created, col = 2)
-abline(v = video_created-video_duration, col = 4)
-
-a06.2.1_bolt$BehaviorNum <- factor(a06.2.1_bolt$Behavior)
-
-plot(bolt_4.06.2.1_thin$time+5*3600, bolt_4.06.2.1_thin$x, type = "l", xlab = "", ylab = "x",
-     xlim = c(video_created-video_duration, video_created), ylim = c(-4,6))
-points(a06.2.1_bolt$Time+video_created-video_duration, a06.2.1_bolt$Behavior %>% factor)
-segments(x0 = a06.2.1_bolt$Time[a06.2.1_bolt$Status == "START"]+video_created-video_duration, 
-         x1 = a06.2.1_bolt$Time[a06.2.1_bolt$Status == "STOP"]+video_created-video_duration,
-         y0 = a06.2.1_bolt$BehaviorNum[a06.2.1_bolt$Status == "START"] %>% as.numeric, 
-         y1 = a06.2.1_bolt$BehaviorNum[a06.2.1_bolt$Status == "STOP"] %>% as.numeric)
-
-
-
-# abline(v = video_created, col = 2)
-# abline(v = video_created-video_duration, col = 4)
-lines(bolt_4.06.2.1_thin$time-5*3600, bolt_4.06.2.1_thin$y, col = 2)
-lines(bolt_4.06.2.1_thin$time-5*3600, bolt_4.06.2.1_thin$z, col = 3)
-
-a06.2.1_bolt_mlt <- data.frame(start = a06.2.1_bolt$Time[a06.2.1_bolt$Status == "START"]+video_created-video_duration,
-                               stop = a06.2.1_bolt$Time[a06.2.1_bolt$Status == "STOP"]+video_created-video_duration,
-                               z = a06.2.1_bolt$Behavior[a06.2.1_bolt$Status == "START"] %>% factor %>% as.numeric)
-
-time_shift <- 5*3600
-
-ggplot(a06.2.1_bolt_mlt, aes(x = start, 
-                             xend = stop, 
-                             y = z+1, yend = z+1, col = factor(z)))+
-  ylim(c(-4,8))+
-  xlim(c(min(a06.2.1_bolt_mlt$start)-1000, max(a06.2.1_bolt_mlt$stop)+1000))+
-  geom_segment(size = 2)+
-  geom_line(data = bolt_4.06.2.1_thin, aes(x = time-time_shift, y = z), col = 1, inherit.aes = FALSE)+
-  geom_line(data = bolt_4.06.2.1_thin, aes(x = time-time_shift, y = y), col = 2, inherit.aes = FALSE)+
-  geom_line(data = bolt_4.06.2.1_thin, aes(x = time-time_shift, y = x), col = 3, inherit.aes = FALSE)
-
-
+tz(video_time_6.3) <- "UTC"
 ```
 ### Part 3.1
 ```{r}
-
-video_created <- ymd_hm("2022-04-06 23:15")
-a06.3.1 <- data.table::fread("../../../../Dropbox/MPI/Dechmann_Lab/Johannes/boris_files/ExportedData/060422_3_1.csv", header = TRUE)
+a06.3.1 <- data.table::fread("../../../../Dropbox/MPI/Dechmann_Lab/Johannes Bernecker/boris_files/ExportedData/updated/060422_3_1.csv", header = TRUE)
 paste0(a06.3.1$Behavior, a06.3.1$Subject) %>% table
-video_duration <- a06.3.1$`Total length`[1]
+video_duration_06.3.1 <- a06.3.1$`Total length`[1]
 
 a06.3.1 <- a06.3.1[order(a06.3.1$Subject, a06.3.1$Behavior, a06.3.1$Time),]
 a06.3.1_mlt <- data.frame(start = a06.3.1$Time[a06.3.1$Status == "START"],
@@ -860,133 +823,551 @@ ggplot(a06.3.1_mlt, aes(x = start, xend = stop, y = behavior, yend = behavior,
   geom_segment(size = 2)+facet_wrap(~subject)
 
 
-a06.3.1_bolt <- a06.3.1 %>% filter(Subject == "bolt")
+a06.3.1_bolt <- a06.3.1 %>% filter(Subject == "light bolt")
 a06.3.1_moon <- a06.3.1 %>% filter(Subject == "moon")
 a06.3.1_heart <- a06.3.1 %>% filter(Subject == "heart")
 a06.3.1_star <- a06.3.1 %>% filter(Subject == "star")
-
-a06.3.1_moon_mlt <- data.frame(start = a06.3.1_moon$Time[a06.3.1_moon$Status == "START"],
-                               stop = a06.3.1_moon$Time[a06.3.1_moon$Status == "STOP"],
-                               behavior = a06.3.1_moon$Behavior[a06.3.1_moon$Status == "START"])
-
-ggplot(a06.3.1_moon_mlt, aes(x = start, xend = stop, y = behavior, yend = behavior, col = behavior))+ geom_segment(size = 2)
-
 
 ```
 
 #### look at moon
 ```{r}
-moon_4.06.3.1 <- moon %>% filter(time > ymd("2022-04-06") & time < ymd("2022-04-08"))
-
-idx <- seq(1, nrow(moon_4.06.3.1), by = 100)
-moon_4.06.3.1_thin <- moon_4.06.3.1[idx,]
-
-range(moon_4.06.3.1_thin$time)
-
-# layout(cbind(1:3))
-# par(mar = c(2,5,2,2))
-
-plot(moon_4.06.3.1_thin$time+5*3600, moon_4.06.3.1_thin$x, type = "l", xlab = "", ylab = "x")
-abline(v = video_created, col = 2)
-abline(v = video_created-video_duration, col = 4)
-
-a06.3.1_moon$BehaviorNum <- factor(a06.3.1_moon$Behavior)
-
-plot(moon_4.06.3.1_thin$time+5*3600, moon_4.06.3.1_thin$x, type = "l", xlab = "", ylab = "x",
-     xlim = c(video_created-video_duration, video_created), ylim = c(-4,6))
-points(a06.3.1_moon$Time+video_created-video_duration, a06.3.1_moon$Behavior %>% factor)
-segments(x0 = a06.3.1_moon$Time[a06.3.1_moon$Status == "START"]+video_created-video_duration, 
-         x1 = a06.3.1_moon$Time[a06.3.1_moon$Status == "STOP"]+video_created-video_duration,
-         y0 = a06.3.1_moon$BehaviorNum[a06.3.1_moon$Status == "START"] %>% as.numeric, 
-         y1 = a06.3.1_moon$BehaviorNum[a06.3.1_moon$Status == "STOP"] %>% as.numeric)
-
-lines(moon_4.06.3.1_thin$time-5*3600, moon_4.06.3.1_thin$y, col = 2)
-lines(moon_4.06.3.1_thin$time-5*3600, moon_4.06.3.1_thin$z, col = 3)
-
-a06.3.1_moon_mlt <- data.frame(start = a06.3.1_moon$Time[a06.3.1_moon$Status == "START"]+video_created-video_duration,
-                               stop = a06.3.1_moon$Time[a06.3.1_moon$Status == "STOP"]+video_created-video_duration,
-                               z = a06.3.1_moon$Behavior[a06.3.1_moon$Status == "START"] %>% factor %>% as.numeric)
-
-time_shift <- 5*3600 - 100
-
-ggplot(a06.3.1_moon_mlt, aes(x = start, 
-                             xend = stop, 
-                             y = z+1, yend = z+1, col = factor(z)))+
-  ylim(c(-4,8))+
-  xlim(c(min(a06.3.1_moon_mlt$start)-1000, max(a06.3.1_moon_mlt$stop)+1000))+
-  geom_segment(size = 2)+
-  geom_line(data = moon_4.06.3.1_thin, aes(x = time-time_shift, y = z), col = 1, inherit.aes = FALSE)+
-  geom_line(data = moon_4.06.3.1_thin, aes(x = time-time_shift, y = y), col = 2, inherit.aes = FALSE)+
-  geom_line(data = moon_4.06.3.1_thin, aes(x = time-time_shift, y = x), col = 3, inherit.aes = FALSE)
-
+acc_check(video_time = video_time_6.3[1],
+          video_duration = video_duration_06.3.1,
+          acc = moon, video = a06.3.1_moon, 
+          start = ymd("2022-04-06"), end = ymd("2022-04-08"),
+          buffer = 500,
+          time_shift = -2*3600, acc_adj = -5, thick = FALSE)
 ```
 
-
-## april 10
+##### add acc behav
 ```{r}
-a10 <- data.table::fread("../../../../Dropbox/MPI/Dechmann_Lab/Johannes/boris_files/ExportedData/100422_6_2.csv", header = TRUE)
-# which bats are active?
-paste0(a10$Behavior, a10$Subject) %>% table
+moon <- acc_add_behavior(video_time = video_time_6.3[1],
+              video_duration = video_duration_06.3.1,
+              acc = moon, video = a06.3.1_moon,
+              time_shift = -2*3600, acc_adj = -5)
+```
 
-a10_bolt <- a10 %>% filter(Subject == "bolt")
-a10_moon <- a10 %>% filter(Subject == "moon")
-a10_star <- a10 %>% filter(Subject == "star")
+#### look at star
+```{r}
+acc_check(video_time = video_time_6.3[1],
+          video_duration = video_duration_06.3.1,
+          acc = star, video = a06.3.1_star, 
+          start = ymd("2022-04-06"), end = ymd("2022-04-08"),
+          buffer = 500,
+          time_shift = -2*3600, acc_adj = -5, thick = FALSE)
+```
 
-ggplot(a10, aes(x = Time/50*60+video_start, y = Behavior, col = Subject))+
-  geom_point()#+
-  # facet_wrap(~Subject)
+##### add acc behav
+```{r}
+star <- acc_add_behavior(video_time = video_time_6.3[1],
+              video_duration = video_duration_06.3.1,
+              acc = star, video = a06.3.1_star,
+              time_shift = -2*3600, acc_adj = -5)
+```
 
-plot(a12_heart$Time/50, a12_heart$Behavior %>% factor)
+#### look at heart
+```{r}
+acc_check(video_time = video_time_6.3[1],
+          video_duration = video_duration_06.3.1,
+          acc = heart, video = a06.3.1_heart, 
+          start = ymd("2022-04-06"), end = ymd("2022-04-08"),
+          buffer = 500,
+          time_shift = -2*3600, acc_adj = -5, thick = FALSE)
+```
+
+##### add acc behav
+```{r}
+heart <- acc_add_behavior(video_time = video_time_6.3[1],
+              video_duration = video_duration_06.3.1,
+              acc = heart, video = a06.3.1_heart,
+              time_shift = -2*3600, acc_adj = -5)
+```
+
+#### look at bolt
+```{r}
+acc_check(video_time = video_time_6.3[1],
+          video_duration = video_duration_06.3.1,
+          acc = bolt, video = a06.3.1_bolt, 
+          start = ymd("2022-04-06"), end = ymd("2022-04-08"),
+          buffer = 100,
+          time_shift = -2*3600, acc_adj = -5, thick = FALSE)
+```
+
+##### add acc behav
+```{r}
+bolt <- acc_add_behavior(video_time = video_time_6.3[1],
+              video_duration = video_duration_06.3.1,
+              acc = bolt, video = a06.3.1_bolt,
+              time_shift = -2*3600, acc_adj = -5)
+```
+
+## 07/4/22
+### Part 3
+### videos created
+```{r}
+video_files_7.3 <- list.files(path = "H:/Panama22/FlightCageBocas/Video/070422/Part3/", pattern = ".MP4", full.names = TRUE)
+
+video_time_7.3 <- base::file.info(video_files_7.3)$mtime
+
+tz(video_time_7.3) <- "UTC"
+```
+### Part 3.2
+```{r}
+a07.3.2 <- data.table::fread("../../../../Dropbox/MPI/Dechmann_Lab/Johannes Bernecker/boris_files/ExportedData/updated/070422_3_2.csv", header = TRUE)
+paste0(a07.3.2$Behavior, a07.3.2$Subject) %>% table
+video_duration_07.3.2 <- a07.3.2$`Total length`[1]
+
+a07.3.2 <- a07.3.2[order(a07.3.2$Subject, a07.3.2$Behavior, a07.3.2$Time),]
+a07.3.2_mlt <- data.frame(start = a07.3.2$Time[a07.3.2$Status == "START"],
+                          stop = a07.3.2$Time[a07.3.2$Status == "STOP"],
+                          behavior = a07.3.2$Behavior[a07.3.2$Status == "START"],
+                          subject = a07.3.2$Subject[a07.3.2$Status == "START"])
+ggplot(a07.3.2_mlt, aes(x = start, xend = stop, y = behavior, yend = behavior, 
+                        col = behavior, group = subject))+
+  geom_segment(size = 2)+facet_wrap(~subject)
+
+
+a07.3.2_bolt <- a07.3.2 %>% filter(Subject == "light bolt")
+a07.3.2_moon <- a07.3.2 %>% filter(Subject == "moon")
+a07.3.2_heart <- a07.3.2 %>% filter(Subject == "heart")
+a07.3.2_star <- a07.3.2 %>% filter(Subject == "star")
 
 ```
 
+#### look at moon
+```{r}
+acc_check(video_time = video_time_7.3[2],
+          video_duration = video_duration_07.3.2,
+          acc = moon, video = a07.3.2_moon, 
+          start = ymd("2022-04-07"), end = ymd("2022-04-09"),
+          buffer = 100,
+          time_shift = -2*3600, acc_adj = -5, thick = FALSE)
+```
+
+##### add acc behav
+```{r}
+moon <- acc_add_behavior(video_time = video_time_7.3[2],
+              video_duration = video_duration_07.3.2,
+              acc = moon, video = a07.3.2_moon,
+              time_shift = -2*3600, acc_adj = -5)
+```
+
+
+#### look at star
+```{r}
+acc_check(video_time = video_time_7.3[2],
+          video_duration = video_duration_07.3.2,
+          acc = star, video = a07.3.2_star, 
+          start = ymd("2022-04-07"), end = ymd("2022-04-09"),
+          buffer = 100,
+          time_shift = -2*3600, acc_adj = -5, thick = FALSE)
+```
+
+##### add acc behav
+```{r}
+star <- acc_add_behavior(video_time = video_time_7.3[2],
+              video_duration = video_duration_07.3.2,
+              acc = star, video = a07.3.2_star,
+              time_shift = -2*3600, acc_adj = -5)
+```
+
+#### look at heart
+```{r}
+acc_check(video_time = video_time_7.3[2],
+          video_duration = video_duration_07.3.2,
+          acc = heart, video = a07.3.2_heart, 
+          start = ymd("2022-04-07"), end = ymd("2022-04-09"),
+          buffer = 100,
+          time_shift = -2*3600, acc_adj = -5, thick = FALSE)
+```
+##### add acc behav
+```{r}
+heart <- acc_add_behavior(video_time = video_time_7.3[2],
+              video_duration = video_duration_07.3.2,
+              acc = heart, video = a07.3.2_heart,
+              time_shift = -2*3600, acc_adj = -5)
+```
+
+#### look at bolt
+```{r}
+acc_check(video_time = video_time_7.3[2],
+          video_duration = video_duration_07.3.2,
+          acc = bolt, video = a07.3.2_bolt, 
+          start = ymd("2022-04-07"), end = ymd("2022-04-09"),
+          buffer = 100,
+          time_shift = -2*3600, acc_adj = -5, thick = FALSE)
+```
+##### add acc behav
+```{r}
+# bolt <- acc_add_behavior(video_time = video_time_7.3[2],
+#               video_duration = video_duration_07.3.2,
+#               acc = bolt, video = a07.3.2_bolt,
+#               time_shift = -2*3600, acc_adj = -5)
+```
+
+## 10/04/22
+### Part 2
+### videos created
+```{r}
+video_files_10.2 <- list.files(path = "H:/Panama22/FlightCageBocas/Video/100422/Part2/", pattern = ".MP4", full.names = TRUE)
+
+video_time_10.2 <- base::file.info(video_files_10.2)$mtime
+
+tz(video_time_10.2) <- "UTC"
+```
+
+#### Part 2.5
+```{r}
+a10.6.2 <- data.table::fread("../../../../Dropbox/MPI/Dechmann_Lab/Johannes Bernecker/boris_files/ExportedData/updated/100422_6_2.csv", header = TRUE)
+paste0(a10.6.2$Behavior, a10.6.2$Subject) %>% table
+video_duration_10.6.2 <- a10.6.2$`Total length`[1]
+
+a10.6.2 <- a10.6.2[order(a10.6.2$Subject, a10.6.2$Behavior, a10.6.2$Time),]
+a10.6.2_mlt <- data.frame(start = a10.6.2$Time[a10.6.2$Status == "START"],
+                          stop = a10.6.2$Time[a10.6.2$Status == "STOP"],
+                          behavior = a10.6.2$Behavior[a10.6.2$Status == "START"],
+                          subject = a10.6.2$Subject[a10.6.2$Status == "START"])
+ggplot(a10.6.2_mlt, aes(x = start, xend = stop, y = behavior, yend = behavior, 
+                        col = behavior, group = subject))+
+  geom_segment(size = 2)+facet_wrap(~subject)
+
+
+a10.6.2_bolt <- a10.6.2 %>% filter(Subject == "light bolt")
+a10.6.2_moon <- a10.6.2 %>% filter(Subject == "moon")
+a10.6.2_heart <- a10.6.2 %>% filter(Subject == "heart")
+a10.6.2_star <- a10.6.2 %>% filter(Subject == "star")
+
+```
+
+#### look at moon
+```{r}
+acc_check(video_time = video_time_10.2[1],
+          video_duration = video_duration_10.6.2,
+          acc = moon, video = a10.6.2_moon, 
+          start = ymd("2022-04-09"), end = ymd("2022-04-11"),
+          buffer = 100,
+          time_shift = -2*3600, acc_adj = -5, thick = FALSE)
+```
+##### add acc behav
+```{r}
+moon <- acc_add_behavior(video_time = video_time_10.2[1],
+              video_duration = video_duration_10.6.2,
+              acc = moon, video = a10.6.2_moon,
+              time_shift = -2*3600, acc_adj = -5)
+```
+
+#### look at star
+```{r}
+acc_check(video_time = video_time_10.2[1],
+          video_duration = video_duration_10.6.2,
+          acc = star, video = a10.6.2_star, 
+          start = ymd("2022-04-09"), end = ymd("2022-04-11"),
+          buffer = 100,
+          time_shift = -2*3600, acc_adj = -5, thick = FALSE)
+```
+
+##### add acc behav
+```{r}
+star <- acc_add_behavior(video_time = video_time_10.2[1],
+              video_duration = video_duration_10.6.2,
+              acc = star, video = a10.6.2_star,
+              time_shift = -2*3600, acc_adj = -5)
+```
+
+#### look at bolt
+```{r}
+acc_check(video_time = video_time_10.2[1],
+          video_duration = video_duration_10.6.2,
+          acc = bolt, video = a10.6.2_bolt, 
+          start = ymd("2022-04-09"), end = ymd("2022-04-11"),
+          buffer = 100,
+          time_shift = -2*3600, acc_adj = -5, thick = FALSE)
+```
+
+##### add acc behav
+```{r}
+star <- acc_add_behavior(video_time = video_time_10.2[1],
+              video_duration = video_duration_10.6.2,
+              acc = star, video = a10.6.2_star,
+              time_shift = -2*3600, acc_adj = -5)
+```
+
+## 12/04/22
+### Part 2
+### videos created
+```{r}
+video_files_12.7 <- list.files(path = "H:/Panama22/FlightCageBocas/Video/120422/Part7/", pattern = ".MP4", full.names = TRUE)
+
+video_time_12.7 <- base::file.info(video_files_12.7)$mtime
+
+tz(video_time_12.7) <- "UTC"
+```
+
+#### Part 7.1
+```{r}
+a12.7.1 <- data.table::fread("../../../../Dropbox/MPI/Dechmann_Lab/Johannes Bernecker/boris_files/ExportedData/updated/120422_7_1.csv", header = TRUE)
+paste0(a12.7.1$Behavior, a12.7.1$Subject) %>% table
+video_duration_12.7.1 <- a12.7.1$`Total length`[1]
+
+a12.7.1 <- a12.7.1[order(a12.7.1$Subject, a12.7.1$Behavior, a12.7.1$Time),]
+a12.7.1_mlt <- data.frame(start = a12.7.1$Time[a12.7.1$Status == "START"],
+                          stop = a12.7.1$Time[a12.7.1$Status == "STOP"],
+                          behavior = a12.7.1$Behavior[a12.7.1$Status == "START"],
+                          subject = a12.7.1$Subject[a12.7.1$Status == "START"])
+ggplot(a12.7.1_mlt, aes(x = start, xend = stop, y = behavior, yend = behavior, 
+                        col = behavior, group = subject))+
+  geom_segment(size = 2)+facet_wrap(~subject)
+
+
+a12.7.1_bolt <- a12.7.1 %>% filter(Subject == "light bolt")
+a12.7.1_moon <- a12.7.1 %>% filter(Subject == "moon")
+a12.7.1_heart <- a12.7.1 %>% filter(Subject == "heart")
+a12.7.1_star <- a12.7.1 %>% filter(Subject == "star")
+
+```
+
+#### look at moon
+```{r}
+acc_check(video_time = video_time_12.7[1],
+          video_duration = video_duration_12.7.1,
+          acc = moon, video = a12.7.1_moon, 
+          start = ymd("2022-04-11"), end = ymd("2022-04-14"),
+          buffer = 100,
+          time_shift = -2*3600, acc_adj = -5, thick = FALSE)
+```
+##### add acc behav
+```{r}
+moon <- acc_add_behavior(video_time = video_time_12.7[1],
+              video_duration = video_duration_12.7.1,
+              acc = moon, video = a12.7.1_moon,
+              time_shift = -2*3600, acc_adj = -5)
+```
+
+#### look at star
+```{r}
+acc_check(video_time = video_time_12.7[1],
+          video_duration = video_duration_12.7.1,
+          acc = moon, video = a12.7.1_moon, 
+          start = ymd("2022-04-11"), end = ymd("2022-04-14"),
+          buffer = 100,
+          time_shift = -2*3600, acc_adj = -5, thick = FALSE)
+```
+
+##### add acc behav
+```{r}
+star <- acc_add_behavior(video_time = video_time_12.7[1],
+              video_duration = video_duration_12.7.1,
+              acc = star, video = a12.7.1_star,
+              time_shift = -2*3600, acc_adj = -5)
+```
+
+#### look at heart
+```{r}
+acc_check(video_time = video_time_12.7[1],
+          video_duration = video_duration_12.7.1,
+          acc = moon, video = a12.7.1_moon, 
+          start = ymd("2022-04-11"), end = ymd("2022-04-14"),
+          buffer = 100,
+          time_shift = -2*3600, acc_adj = -5, thick = FALSE)
+```
+
+##### add acc behav
+```{r}
+heart <- acc_add_behavior(video_time = video_time_12.7[1],
+              video_duration = video_duration_12.7.1,
+              acc = heart, video = a12.7.1_heart,
+              time_shift = -2*3600, acc_adj = -5)
+```
+
+#### look at bolt
+```{r}
+acc_check(video_time = video_time_12.7[1],
+          video_duration = video_duration_12.7.1,
+          acc = bolt, video = a12.7.1_moon, 
+          start = ymd("2022-04-11"), end = ymd("2022-04-14"),
+          buffer = 100,
+          time_shift = -2*3600, acc_adj = -5, thick = FALSE)
+```
+
+##### add acc behav
+```{r}
+bolt <- acc_add_behavior(video_time = video_time_12.7[1],
+              video_duration = video_duration_12.7.1,
+              acc = bolt, video = a12.7.1_bolt,
+              time_shift = -2*3600, acc_adj = -5)
+```
+
+
+# save
+```{r}
+save(moon,heart, star, bolt, file = "../../../../Dropbox/MPI/Phyllostomus/BORIS/boris_video_match.robj")
+```
+
+## summarize behaviors
+```{r}
+
+star$behavior %>% table()
+
+bolt$behavior %>% table()
+```
+
+# random forest
+## moon
+```{r}
+
+moon$behavior %>% table()
+
+moon.rf <- randomForest(factor(behavior) ~ ODBA + VeDBA + x + y + z + x0 + y0 + z0 + x1 + y1 + z1, 
+             data = moon[moon$behavior == "climbing" | moon$behavior == "grooming" | moon$behavior == "sleeping" | 
+                           moon$behavior == "flying",])
+moon.rf
+importance(moon.rf)
+varImpPlot(moon.rf)
+
+```
+
+## heart
+```{r}
+heart$behavior %>% table()
+heart.rf <- randomForest(factor(behavior) ~ ODBA + VeDBA + x + y + z + x0 + y0 + z0 + x1 + y1 + z1, 
+             data = heart[heart$behavior == "climbing" | heart$behavior == "grooming" | heart$behavior == "sleeping" |
+                            heart$behavior == "flying",])
+heart.rf
+importance(heart.rf)
+varImpPlot(heart.rf)
+```
+
+## star
+```{r}
+star$behavior %>% table()
+star.rf <- randomForest(factor(behavior) ~ ODBA + VeDBA + x + y + z + x0 + y0 + z0 + x1 + y1 + z1, 
+             data = star[star$behavior == "climbing" | star$behavior == "grooming" | star$behavior == "sleeping" |
+                            star$behavior == "flying",])
+star.rf
+importance(star.rf)
+varImpPlot(star.rf)
+```
+
+## bolt
+```{r}
+bolt$behavior %>% table()
+bolt.rf <- randomForest(factor(behavior) ~ ODBA + VeDBA + x + y + z + x0 + y0 + z0 + x1 + y1 + z1, 
+             data = bolt[bolt$behavior == "climbing" | bolt$behavior == "grooming" | bolt$behavior == "sleeping" |
+                            bolt$behavior == "flying",])
+bolt.rf
+importance(bolt.rf)
+varImpPlot(bolt.rf)
+```
+
+## all bats
+```{r}
+bats <- rbind(moon[moon$behavior == "climbing" | moon$behavior == "grooming" | moon$behavior == "sleeping" |
+                            moon$behavior == "flying",],
+              heart[heart$behavior == "climbing" | heart$behavior == "grooming" | heart$behavior == "sleeping" |
+                            heart$behavior == "flying",],
+              star[star$behavior == "climbing" | star$behavior == "grooming" | star$behavior == "sleeping" |
+                            star$behavior == "flying",],
+              bolt[bolt$behavior == "climbing" | bolt$behavior == "grooming" | bolt$behavior == "sleeping" |
+                            bolt$behavior == "flying",])
+fc.rf <- randomForest(factor(behavior) ~ ODBA + VeDBA + x + y + z + x0 + y0 + z0 + x1 + y1 + z1, 
+             data = bats)
+```
+
+
+
+## save models
+```{r}
+save(moon.rf, heart.rf, star.rf, bolt.rf, file = "../../../../Dropbox/MPI/Phyllostomus/BORIS/rf_fc_bats.robj")
+```
+
+# predict data on to each bat
+# heart
+```{r}
+#heart$heart_behav <- predict(heart.rf, newdata = heart)
+(table(heart$heart_behav)/nrow(heart)) %>% round(2)
+
+#heart$moon_behav <- predict(moon.rf, newdata = heart)
+(table(heart$moon_behav)/nrow(heart)) %>% round(2)
+
+#heart$bolt_behav <- predict(bolt.rf, newdata = heart)
+(table(heart$heart_behav)/nrow(heart)) %>% round(2)
+
+#heart$star_behav <- predict(star.rf, newdata = heart)
+(table(heart$star_behav)/nrow(heart)) %>% round(2)
+```
+
+
+# star
+```{r}
+star$heart_behav <- predict(heart.rf, newdata = star)
+(table(star$heart_behav)/nrow(star)) %>% round(2)
+
+star$moon_behav <- predict(moon.rf, newdata = star)
+(table(star$moon_behav)/nrow(star)) %>% round(2)
+
+star$bolt_behav <- predict(bolt.rf, newdata = star)
+(table(star$heart_behav)/nrow(star)) %>% round(2)
+
+star$star_behav <- predict(star.rf, newdata = star)
+(table(star$star_behav)/nrow(star)) %>% round(2)
+```
+
+# moon
+```{r}
+moon$heart_behav <- predict(heart.rf, newdata = moon)
+(table(moon$heart_behav)/nrow(moon)) %>% round(2)
+
+moon$moon_behav <- predict(moon.rf, newdata = moon)
+(table(moon$moon_behav)/nrow(moon)) %>% round(2)
+
+moon$bolt_behav <- predict(bolt.rf, newdata = moon)
+(table(moon$heart_behav)/nrow(moon)) %>% round(2)
+
+moon$star_behav <- predict(star.rf, newdata = moon)
+(table(moon$star_behav)/nrow(moon)) %>% round(2)
+```
+
+# bolt
+```{r}
+bolt$heart_behav <- predict(heart.rf, newdata = bolt)
+(table(bolt$heart_behav)/nrow(bolt)) %>% round(2)
+
+bolt$moon_behav <- predict(moon.rf, newdata = bolt)
+(table(bolt$moon_behav)/nrow(bolt)) %>% round(2)
+
+bolt$bolt_behav <- predict(bolt.rf, newdata = bolt)
+(table(bolt$heart_behav)/nrow(bolt)) %>% round(2)
+
+bolt$star_behav <- predict(star.rf, newdata = bolt)
+(table(bolt$star_behav)/nrow(bolt)) %>% round(2)
+```
+
+```{r}
+# what is the significance of the behavior match?
+t <- with(heart[heart$behavior == "climbing" | heart$behavior == "grooming" | heart$behavior == "sleeping" |
+                            heart$behavior == "flying",], table(behavior, moon_behav))
+t
+# this calculates association statistics between pairs of bats
+a <- assocstats(t)
+a
+```
 
 
 ```{r}
-star_4.10 <- star %>% filter(time > ymd("2022-04-11") & time < ymd("2022-04-12"))
-# star_4.10_sum <- sum_data(star_4.10, time = "time", x="x" ,y="y" , z="z", stats = "ODBA")
-# plot(star_4.10_sum$time, star_4.10_sum$ODBA)
-rm(star)
+heart1s <- heart[seq(1,nrow(heart), by = 25),]
+moon1s <- moon[seq(1,nrow(moon), by = 25),]
+star1s <- star[seq(1,nrow(star), by = 25),]
+bolt1s <- bolt[seq(1,nrow(bolt), by = 25),]
 
+plot(heart1s$time, heart1s$VeDBA, col = heart1s$behavior %>% factor)
+plot(heart1s$time, heart1s$VeDBA, col = heart1s$heart_behav %>% factor)
 
-idx <- seq(1, nrow(star_4.10), by = 100)
-star_4.10_thin <- star_4.10[idx,]
-# rm(star_4.10)
 ```
-
 
 ```{r}
-video_created <- ymd_hms("2022-04-11 05:48:00")
-video_duration <- 1*3600+16*60+50
-range(star_4.10_thin$time)
-
-# layout(cbind(1:3))
-# par(mar = c(2,5,2,2))
-
-plot(star_4.10_thin$time-5*3600, star_4.10_thin$x, type = "l", xlab = "", ylab = "x",
-     xlim = c(video_created-video_duration, video_created), ylim = c(-4,6))
-points(a10_star$Time+video_created-video_duration, a10_star$Behavior %>% factor)
-# abline(v = video_created, col = 2)
-# abline(v = video_created-video_duration, col = 4)
-lines(star_4.10_thin$time-5*3600, star_4.10_thin$y, col = 2)
-lines(star_4.10_thin$time-5*3600, star_4.10_thin$z, col = 3)
-```
-
-
-
-```{r}
-star_4.12 <- star %>% filter(time > ymd("2022-04-12") & time < ymd_hms("2022-04-13 12:00:00"))
-
-# april 12
-video_start <- dmy_hms("13-04-2022 05:07:26")
-a12 <- data.table::fread("../../../Dropbox/MPI/Dechmann_Lab/Johannes/boris_files/ExportedData/120422_7_1.csv", header = TRUE)
-a12$Behavior %>% table
-
-a12_heart <- a12 %>% filter(Subject == "heart")
-
-ggplot(a12, aes(x = Time/50, y = Behavior, col = Subject))+geom_point()
-
-plot(a12_heart$Time/50, a12_heart$Behavior %>% factor)
+save(heart1s, moon1s, star1s, bolt1s, file = "../../../../Dropbox/MPI/Dechmann_Lab/Johannes Bernecker/thin_fc_bats.robj")
 
 ```
+
 

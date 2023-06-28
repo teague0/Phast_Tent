@@ -1,0 +1,77 @@
+---
+title: "BORIS_ACC_FC"
+output: html_document
+---
+
+```{r}
+library(pacman)
+p_load(tidyverse, data.table, lubridate)
+```
+
+```{r}
+load("../../../Dropbox/MPI/Dechmann_Lab/Johannes Bernecker/thin_fc_bats.robj")
+
+```
+
+# Compare bats
+## predict data on to each bat
+### heart
+```{r}
+#heart$heart_behav <- predict(heart.rf, newdata = heart)
+(table(heart1s$heart_behav)/nrow(heart1s)) %>% round(2)
+
+#heart$moon_behav <- predict(moon.rf, newdata = heart)
+(table(heart1s$moon_behav)/nrow(heart1s)) %>% round(2)
+
+#heart$bolt_behav <- predict(bolt.rf, newdata = heart)
+(table(heart1s$heart_behav)/nrow(heart1s)) %>% round(2)
+
+#heart$star_behav <- predict(star.rf, newdata = heart)
+(table(heart1s$star_behav)/nrow(heart1s)) %>% round(2)
+```
+
+
+# star
+```{r}
+(table(star1s$heart_behav)/nrow(star1s)) %>% round(2)
+
+(table(star1s$moon_behav)/nrow(star1s)) %>% round(2)
+
+(table(star1s$heart_behav)/nrow(star1s)) %>% round(2)
+
+(table(star1s$star_behav)/nrow(star1s)) %>% round(2)
+```
+
+# moon
+```{r}
+(table(moon1s$heart_behav)/nrow(moon1s)) %>% round(2)
+
+(table(moon1s$moon_behav)/nrow(moon1s)) %>% round(2)
+
+(table(moon1s$heart_behav)/nrow(moon1s)) %>% round(2)
+
+(table(moon1s$star_behav)/nrow(moon1s)) %>% round(2)
+```
+
+# bolt
+```{r}
+(table(bolt1s$heart_behav)/nrow(bolt1s)) %>% round(2)
+
+(table(bolt1s$moon_behav)/nrow(bolt1s)) %>% round(2)
+
+(table(bolt1s$heart_behav)/nrow(bolt1s)) %>% round(2)
+
+(table(bolt1s$star_behav)/nrow(bolt1s)) %>% round(2)
+```
+
+We need to think about how to define the accuracy of the models and similarity between bats. I think these association stats could work for both, but play around with it and see what you think.
+
+```{r}
+# what is the significance of the behavior match?
+t <- with(heart1s[heart1s$behavior == "climbing" | heart1s$behavior == "grooming" | heart1s$behavior == "sleeping" |
+                            heart1s$behavior == "flying",], table(behavior, moon_behav))
+t
+# this calculates association statistics between pairs of bats
+a <- assocstats(t)
+a
+```
