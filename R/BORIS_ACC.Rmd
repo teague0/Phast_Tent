@@ -6,7 +6,7 @@ date: "2023-06-15"
 
 ```{r}
 library(pacman)
-p_load(lubridate, data.table, tidyverse, dplyr, accelerateR, roll, randomForest)
+p_load(lubridate, data.table, tidyverse, dplyr, accelerateR, roll, randomForest, vcd)
 ```
 
 # load acceleration data
@@ -1202,6 +1202,7 @@ bolt <- acc_add_behavior(video_time = video_time_12.7[1],
 # save
 ```{r}
 save(moon,heart, star, bolt, file = "../../../../Dropbox/MPI/Phyllostomus/BORIS/boris_video_match.robj")
+load("../../../../Dropbox/MPI/Phyllostomus/BORIS/boris_video_match.robj")
 ```
 
 ## summarize behaviors
@@ -1279,6 +1280,7 @@ fc.rf <- randomForest(factor(behavior) ~ ODBA + VeDBA + x + y + z + x0 + y0 + z0
 ## save models
 ```{r}
 save(moon.rf, heart.rf, star.rf, bolt.rf, file = "../../../../Dropbox/MPI/Phyllostomus/BORIS/rf_fc_bats.robj")
+load("../../../../Dropbox/MPI/Phyllostomus/BORIS/rf_fc_bats.robj")
 ```
 
 # predict data on to each bat

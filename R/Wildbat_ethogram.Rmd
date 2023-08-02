@@ -1,0 +1,138 @@
+---
+title: "BORIS_ACC_WildBats"
+output: html_document
+date: 2023-08-01
+---
+
+Code for Johannes to summarize the behavioral categories of wild Phyllostomus 
+hastatus estimated from acceleration models.
+
+# load libraries
+```{r}
+library(pacman)
+p_load(tidyverse, data.table, lubridate, vcd, reshape2, glmmTMB, report)
+```
+
+# load data
+```{r}
+# files <- list.files("./../../../Dropbox/MPI/Phyllostomus/BORIS/rf_bats/", full.names = TRUE)
+# 
+# df <- data.table()
+# i = 1
+# for(i in 1:length(files)){
+#   d <- fread(files[i])
+#   df <- rbind(df, d)
+# }
+# 
+# df$date <- date(df$time-12*3600)
+# df$hour <- hour(df$time-12*3600)
+# df$behavior[df$behavior == "resting"] <- df$rf_behavior[df$behavior == "resting"]
+# # table(df$behavior)
+# # unique(df$date)
+# df %>% reframe(sleeping = length(which(behavior == "sleeping"))/n(),
+#                climbing = length(which(behavior == "climbing"))/n(),
+#                grooming = length(which(behavior == "grooming"))/n(),
+#                foraging = length(which(behavior == "foraging" | 
+#                                          behavior == "flying"))/n(),
+#                commuting = length(which(behavior == "commuting"))/n(),
+#                ODBA = sum(odba, na.rm = TRUE),
+#                VeDBA = sum(vedba, na.rm = TRUE),
+#                count = n(),
+#                .by = c(date, bat)) -> df_sum
+# # remove days with missing data or tag fell off
+# df_sum <- df_sum[df_sum$count > 30000 & df_sum$ODBA > 100000 & df_sum$climbing < 0.05,]
+
+load("../../../../Dropbox/MPI/Dechmann_Lab/Johannes Bernecker/wildbats.robj")
+```
+
+```{r}
+df_sum_mlt <- melt(df_sum, c("bat", "date", "count", "ODBA", "VeDBA"))
+ggplot(df_sum_mlt, aes(x = date, y = value*100, col = variable))+
+  geom_point()+
+  ylab("%")+
+  theme_bw()+facet_wrap(~bat)
+
+ggplot(df_sum_mlt, aes(x = variable, y = value*100))+
+  geom_boxplot()+ylab("%")+xlab("")+theme_bw()
+```
+```{r}
+df_sum %>% reframe(sleep = paste0("mean:", round(mean(sleeping*100), 1), ", sd: ", round(sd(sleeping*100),1)),
+                   climb = paste0("mean:", round(mean(climbing*100), 1), ", sd: ", round(sd(climbing*100),1)),
+                   groom = paste0("mean:", round(mean(grooming*100), 1), ", sd: ", round(sd(grooming*100),1)),
+                   forage = paste0("mean:", round(mean((foraging)*100), 1), ", sd: ", round(sd((foraging)*100),1)),
+                   commute = paste0("mean:", round(mean(commuting*100), 1), ", sd: ", round(sd(commuting*100),1))) -> behav_percent
+
+data.frame(behavior = behav_percent %>% names, mean_sd = as.character(behav_percent[1,]))
+```
+
+# what time do bats do each behavior?
+```{r}
+
+df %>% reframe(sleeping = length(which(behavior == "sleeping"))/n(),
+               climbing = length(which(behavior == "climbing"))/n(),
+               grooming = length(which(behavior == "grooming"))/n(),
+               flying = length(which(behavior == "flying"))/n(),
+               foraging = length(which(behavior == "foraging"))/n(),
+               commuting = length(which(behavior == "commuting"))/n(),
+               ODBA = sum(odba, na.rm = TRUE),
+               VeDBA = sum(vedba, na.rm = TRUE),
+               count = n(),
+               .by = c(date, hour, bat)) -> df_hr_sum
+
+df_hr_sum <- df_hr_sum[df_hr_sum$count > 1000,]
+```
+
+# plot the activity percentage for each hour
+```{r}
+df_hr_sum_mlt <- melt(df_hr_sum, c("bat", "hour", "date", "count", "ODBA", "VeDBA"))
+ggplot(df_hr_sum_mlt, aes(x = hour, y = value*100, col = variable))+
+  geom_point()
+```
+
+# when is each behavior most common?
+```{r}
+df_hr_sum %>% reframe(sleep = mean(sleeping), 
+                      climb = mean(climbing),
+                      groom = mean(grooming),
+                      foraging = mean(flying+foraging),
+                      commuting = mean(commuting),
+                      .by = hour) -> hr_sum
+hr_sum_mlt <- melt(hr_sum, "hour")
+ggplot(hr_sum_mlt, aes(x = hour, y = value, col = variable))+
+  geom_point()+ylab("%")+theme_bw()
+```
+
+# What relationships would you have expected for ODBA and VeDBA to have with each behavior?
+Climbing and flying should create higher VeDBA, so an increase in that alone would shoud have a positive relationship. Why don't we see that relationship? Sleeping means you aren't moving at all, so, in isolation, more sleep should mean lower VeDBA. 
+
+```{r}
+ggplot(df_sum_mlt, aes(x = value, y = scale(VeDBA), col = variable))+
+  geom_point()+
+  # geom_smooth(method = "lm")+
+  xlab("%") + ylab("VeDBA")+
+  facet_wrap(~variable)+theme_bw()
+```
+
+# summarise daily behavior
+check that covariates are not correlated
+sleeping is correlated with grooming, so we can only include sleeping in the model
+```{r}
+psych::pairs.panels(df_sum)
+```
+
+# model these results
+```{r}
+fit_sleeping <- lm(scale(VeDBA) ~ sleeping+foraging+commuting+climbing, data = df_sum)
+summary(fit_sleeping)
+report(fit_sleeping)
+report(fit_sleeping) %>% as.data.frame()
+```
+These results suggest that the more you sleep the lower your VeDBA, which I think is the opposite of your prediction. My guess is that since sleep has super low VeDBA, it is simply a time effect where more time not moving will inevitably lead to lower total movement. Still fun to test a hypothesis!
+
+# save data
+```{r}
+save(df_sum, file = "../../../../Dropbox/MPI/Dechmann_Lab/Johannes Bernecker/wildbats.robj")
+```
+
+
+

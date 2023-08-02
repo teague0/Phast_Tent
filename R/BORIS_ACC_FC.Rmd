@@ -1,77 +1,325 @@
 ---
 title: "BORIS_ACC_FC"
 output: html_document
+date: 2023-08-01
 ---
 
+Code for Johannes to summarize the behavioral categories of captive Phyllostomus 
+hastatus recorded from videos and estimated from acceleration models.
+
+# load libraries
 ```{r}
 library(pacman)
-p_load(tidyverse, data.table, lubridate)
+p_load(tidyverse, data.table, lubridate, vcd, reshape2, report)
 ```
 
+# load data
 ```{r}
-load("../../../Dropbox/MPI/Dechmann_Lab/Johannes Bernecker/thin_fc_bats.robj")
-
+load("../../../../Dropbox/MPI/Dechmann_Lab/Johannes Bernecker/thin_fc_bats.robj")
 ```
 
-# Compare bats
-## predict data on to each bat
-### heart
+
+# summarize the number and proportion of behaviors observed for each bat
+Use this code as a template for all four individuals
 ```{r}
+idx <- which(heart1s$behavior == "climbing" | heart1s$behavior == "grooming" |
+                              heart1s$behavior == "flying" | heart1s$behavior == "sleeping")
+
+heart1s_filter <- heart1s[idx,]
+
+t <- heart1s_filter$behavior %>% table() 
+(t/nrow(heart1s_filter)) %>% round(2)
+
 #heart$heart_behav <- predict(heart.rf, newdata = heart)
-(table(heart1s$heart_behav)/nrow(heart1s)) %>% round(2)
+(table(heart1s_filter$heart_behav)/nrow(heart1s_filter)) %>% round(2)
 
 #heart$moon_behav <- predict(moon.rf, newdata = heart)
-(table(heart1s$moon_behav)/nrow(heart1s)) %>% round(2)
+(table(heart1s_filter$moon_behav)/nrow(heart1s_filter)) %>% round(2)
 
 #heart$bolt_behav <- predict(bolt.rf, newdata = heart)
-(table(heart1s$heart_behav)/nrow(heart1s)) %>% round(2)
+(table(heart1s_filter$bolt_behav)/nrow(heart1s_filter)) %>% round(2)
 
 #heart$star_behav <- predict(star.rf, newdata = heart)
-(table(heart1s$star_behav)/nrow(heart1s)) %>% round(2)
+(table(heart1s_filter$star_behav)/nrow(heart1s_filter)) %>% round(2)
 ```
+Make a table with four columns (the percentage of each behavior per bat and the total number of rows as the fifth column)
 
 
-# star
+# How well do the models match the observed data
+Here we compare the predicted behavior from the four models for each individual. We expect that the model trained on the bat will give the best results.
+## heart
 ```{r}
-(table(star1s$heart_behav)/nrow(star1s)) %>% round(2)
+#heart$heart_behav <- predict(heart.rf, newdata = heart)
+df_heart <- as.data.frame(
+  rbind(
+    (table(heart1s$heart_behav)/nrow(heart1s)) %>% round(2),
+    
+    #heart$moon_behav <- predict(moon.rf, newdata = heart)
+    (table(heart1s$moon_behav)/nrow(heart1s)) %>% round(2),
+    
+    #heart$bolt_behav <- predict(bolt.rf, newdata = heart)
+    (table(heart1s$bolt_behav)/nrow(heart1s)) %>% round(2),
+    
+    #heart$star_behav <- predict(star.rf, newdata = heart)
+    (table(heart1s$star_behav)/nrow(heart1s)) %>% round(2)))
 
-(table(star1s$moon_behav)/nrow(star1s)) %>% round(2)
-
-(table(star1s$heart_behav)/nrow(star1s)) %>% round(2)
-
-(table(star1s$star_behav)/nrow(star1s)) %>% round(2)
+df_heart$model <- c("heart", "moon", "bolt", "star")
+df_heart$bat <- "heart"
 ```
 
-# moon
+
+## star
 ```{r}
-(table(moon1s$heart_behav)/nrow(moon1s)) %>% round(2)
 
-(table(moon1s$moon_behav)/nrow(moon1s)) %>% round(2)
+df_star <- as.data.frame(
+  rbind(
+    (table(star1s$heart_behav)/nrow(star1s)) %>% round(2),
 
-(table(moon1s$heart_behav)/nrow(moon1s)) %>% round(2)
+    (table(star1s$moon_behav)/nrow(star1s)) %>% round(2),
 
-(table(moon1s$star_behav)/nrow(moon1s)) %>% round(2)
+    (table(star1s$bolt_behav)/nrow(star1s)) %>% round(2),
+
+    (table(star1s$star_behav)/nrow(star1s)) %>% round(2))) 
+
+df_star$model <- c("heart", "moon", "bolt", "star")
+df_star$bat <- "star"
 ```
 
-# bolt
+## moon
 ```{r}
-(table(bolt1s$heart_behav)/nrow(bolt1s)) %>% round(2)
+df_moon <- as.data.frame(
+  rbind(
+    (table(moon1s$heart_behav)/nrow(moon1s)) %>% round(2),
+    
+    (table(moon1s$moon_behav)/nrow(moon1s)) %>% round(2),
+    
+    (table(moon1s$bolt_behav)/nrow(moon1s)) %>% round(2),
+    
+    (table(moon1s$star_behav)/nrow(moon1s)) %>% round(2)))
 
-(table(bolt1s$moon_behav)/nrow(bolt1s)) %>% round(2)
-
-(table(bolt1s$heart_behav)/nrow(bolt1s)) %>% round(2)
-
-(table(bolt1s$star_behav)/nrow(bolt1s)) %>% round(2)
+df_moon$model <- c("heart", "moon", "bolt", "star")
+df_moon$bat <- "moon"
 ```
 
+## bolt
+```{r}
+df_bolt <- as.data.frame(
+  rbind(
+    (table(bolt1s$heart_behav)/nrow(bolt1s)) %>% round(2),
+    
+    (table(bolt1s$moon_behav)/nrow(bolt1s)) %>% round(2),
+    
+    (table(bolt1s$bolt_behav)/nrow(bolt1s)) %>% round(2),
+    
+    (table(bolt1s$star_behav)/nrow(bolt1s)) %>% round(2)))
+
+df_bolt$model <- c("heart", "moon", "bolt", "star")
+df_bolt$bat <- "bolt"
+
+```
+
+### plot model similarity
+```{r}
+df_model <- rbind(df_heart, df_star, df_moon, df_bolt)
+df_model_mlt <- reshape2::melt(df_model)
+
+# do models from different bats give similar results?
+ggplot(df_model_mlt, aes(x = model, y = value, col = variable, group = variable))+
+  geom_line()+
+  facet_wrap(~bat)+
+  theme_bw()
+
+# how variable are the models?
+ggplot(df_model_mlt, aes(x = variable, y = value, col = variable))+
+  geom_boxplot()+
+  facet_wrap(~bat)+
+  theme_bw()
+df_model %>% group_by(bat) %>% 
+  dplyr::summarise(mean_climbing = mean(climbing))
+
+```
+
+# Statistics for comparing the similarity of predicted behaviors
 We need to think about how to define the accuracy of the models and similarity between bats. I think these association stats could work for both, but play around with it and see what you think.
 
+## what is the significance of the behavior match?
+### store all signficance tests in a matrix
 ```{r}
-# what is the significance of the behavior match?
-t <- with(heart1s[heart1s$behavior == "climbing" | heart1s$behavior == "grooming" | heart1s$behavior == "sleeping" |
-                            heart1s$behavior == "flying",], table(behavior, moon_behav))
+m <- matrix(NA, 4,4)
+rownames(m) <- c("heart", "moon", "bolt", "star")
+colnames(m) <- c("heart", "moon", "bolt", "star")
+m
+```
+
+### compare the behaviors observed by the video with behaviors predicted by the moon model
+```{r}
+# create a contingency table 
+t <- with(heart1s_filter, table(behavior, moon_behav))
 t
+
 # this calculates association statistics between pairs of bats
 a <- assocstats(t)
 a
+
+m["heart", "moon"] <- a$contingency
 ```
+
+Repeat this for each observed behavior vs model behavior combination.
+
+
+We can do the same analysis for comparing model performance between the heart and moon models
+### create a new matrix for significance tests between model performances
+```{r}
+# model maxtrix
+mm <- matrix(NA, 4,4)
+rownames(mm) <- c("heart", "moon", "bolt", "star")
+colnames(mm) <- c("heart", "moon", "bolt", "star")
+mm
+```
+
+```{r}
+# create a contingency table 
+t <- with(heart1s_filter, table(heart_behav, moon_behav))
+t
+
+# this calculates association statistics between pairs of bats
+a <- assocstats(t)
+a
+
+mm["heart", "moon"] <- a$contingency
+```
+
+Repeat this for each pair of bats, although no need to do repeated associations, eg. moon vs heart, since we just did heart vs moon.
+
+
+Ultimately, we are just interested in sleeping, so we could also rerun all of the analysis as sleeping vs not sleeping to evaluate model performance.
+
+# look at behaviors for each day
+## summarise behaviors based on the model trained for that bat for each day
+### heart
+```{r}
+heart1s %>% group_by(date = date(time)) %>% 
+  dplyr::summarise(flying = length(which(heart_behav == "flying"))/n(),
+                   climbing = length(which(heart_behav == "climbing"))/n(),
+                   grooming = length(which(heart_behav == "grooming"))/n(),
+                   sleeping = length(which(heart_behav == "sleeping"))/n(),
+                   ODBA = sum(ODBA, na.rm = TRUE),
+                   VeDBA = sum(VeDBA, na.rm = TRUE),
+                   count = n()) -> h_sum
+h_sum$bat <- "heart"
+# remove days where we didn't record the entire day
+h_sum <- h_sum[h_sum$count == 86400,]
+
+h_sum_mlt <- reshape2::melt(h_sum, c("bat", "date", "count", "ODBA", "VeDBA"))
+
+ggplot(h_sum_mlt, aes(x = date, y = value*100, col = variable))+
+  geom_point()+
+  ylab("%")+
+  theme_bw()
+```
+something weird happens around April 12 when climbing becomes super frequent, but sleeping and grooming being the most common behaviors makes sense.
+### bolt
+```{r}
+bolt1s %>% group_by(date = date(time)) %>% 
+  dplyr::summarise(flying = length(which(bolt_behav == "flying"))/n(),
+                   climbing = length(which(bolt_behav == "climbing"))/n(),
+                   grooming = length(which(bolt_behav == "grooming"))/n(),
+                   sleeping = length(which(bolt_behav == "sleeping"))/n(),
+                   ODBA = sum(ODBA, na.rm = TRUE),
+                   VeDBA = sum(VeDBA, na.rm = TRUE),
+                   count = n()) -> b_sum
+b_sum$bat <- "bolt"
+b_sum <- b_sum[b_sum$count == 86400,]
+
+b_sum_mlt <- reshape2::melt(b_sum, c("bat", "date", "count", "ODBA", "VeDBA"))
+
+ggplot(b_sum_mlt, aes(x = date, y = value*100, col = variable))+
+  geom_point()+
+  ylab("%")+
+  theme_bw()
+```
+missing recordings on April 8th
+### moon
+```{r}
+moon1s %>% group_by(date = date(time)) %>% 
+  dplyr::summarise(flying = length(which(moon_behav == "flying"))/n(),
+                   climbing = length(which(moon_behav == "climbing"))/n(),
+                   grooming = length(which(moon_behav == "grooming"))/n(),
+                   sleeping = length(which(moon_behav == "sleeping"))/n(),
+                   ODBA = sum(ODBA, na.rm = TRUE),
+                   VeDBA = sum(VeDBA, na.rm = TRUE),
+                   count = n()) -> m_sum
+m_sum$bat <- "moon"
+m_sum <- m_sum[m_sum$count == 86400,]
+
+m_sum_mlt <- reshape2::melt(m_sum, c("bat", "date", "count", "ODBA", "VeDBA"))
+
+ggplot(m_sum_mlt, aes(x = date, y = value*100, col = variable))+
+  geom_point()+
+  ylab("%")+
+  theme_bw()
+```
+
+### star
+```{r}
+star1s %>% group_by(date = date(time)) %>% 
+  dplyr::summarise(flying = length(which(star_behav == "flying"))/n(),
+                   climbing = length(which(star_behav == "climbing"))/n(),
+                   grooming = length(which(star_behav == "grooming"))/n(),
+                   sleeping = length(which(star_behav == "sleeping"))/n(),
+                   ODBA = sum(ODBA, na.rm = TRUE),
+                   VeDBA = sum(VeDBA, na.rm = TRUE),
+                   count = n()) -> s_sum
+s_sum$bat <- "star"
+s_sum <- s_sum[s_sum$count == 86400,]
+
+s_sum_mlt <- reshape2::melt(s_sum, c("bat", "date", "count", "ODBA", "VeDBA"))
+
+ggplot(s_sum_mlt, aes(x = date, y = value*100, col = variable))+
+  geom_point()+
+  ylab("%")+
+  theme_bw()
+```
+
+### all bats
+```{r}
+bat_sum_mlt <- rbind(h_sum_mlt, m_sum_mlt, b_sum_mlt, s_sum_mlt)
+ggplot(bat_sum_mlt, aes(x = date, y = value*100, col = variable))+
+  geom_point()+
+  ylab("%")+
+  theme_bw()+facet_wrap(~bat)
+```
+
+# how does ODBA and VeDBA correlate with total sleep?
+## all bats
+```{r}
+ggplot(bat_sum_mlt, aes(x = value, y = VeDBA, col = bat, group = variable))+
+  geom_point()+geom_smooth(method = "lm")+
+  facet_wrap(~variable, scales = "free")
+
+ggplot(bat_sum_mlt, aes(x = value, y = ODBA, col = bat, group = variable))+
+  geom_point()+geom_smooth(method = "lm")+
+  facet_wrap(~variable, scales = "free")
+```
+
+# What relationships would you have expected for ODBA and VeDBA to have with each behavior?
+Climbing and flying should create higher VeDBA, so an increase in that alone would shoud have a positive relationship. Why don't we see that relationship? Sleeping means you aren't moving at all, so, in isolation, more sleep should mean lower VeDBA. 
+
+# model these results
+```{r}
+bat_sum_mlt
+bat_sum <- rbind(h_sum, m_sum, b_sum, s_sum)
+
+fit_sleeping <- lm(VeDBA ~ sleeping, data = bat_sum)
+summary(fit_sleeping)
+report(fit_sleeping) %>% as.data.frame()
+
+fit_grooming <- lm(VeDBA ~ grooming, data = bat_sum)
+summary(fit_grooming)
+report(fit_grooming) %>% as.data.frame()
+
+# copy this code for flying and climbing
+```
+
+
+
