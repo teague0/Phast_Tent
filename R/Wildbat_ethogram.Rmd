@@ -10,12 +10,12 @@ hastatus estimated from acceleration models.
 # load libraries
 ```{r}
 library(pacman)
-p_load(tidyverse, data.table, lubridate, vcd, reshape2, glmmTMB, report)
+p_load(tidyverse, data.table, lubridate, vcd, reshape2, glmmTMB, report, psych)
 ```
 
 # load data
 ```{r}
-# files <- list.files("./../../../Dropbox/MPI/Phyllostomus/BORIS/rf_bats/", full.names = TRUE)
+# files <- list.files("../../../../Dropbox/MPI/Phyllostomus/BORIS/rf_bats/", full.names = TRUE)
 # 
 # df <- data.table()
 # i = 1
@@ -32,7 +32,7 @@ p_load(tidyverse, data.table, lubridate, vcd, reshape2, glmmTMB, report)
 # df %>% reframe(sleeping = length(which(behavior == "sleeping"))/n(),
 #                climbing = length(which(behavior == "climbing"))/n(),
 #                grooming = length(which(behavior == "grooming"))/n(),
-#                foraging = length(which(behavior == "foraging" | 
+#                foraging = length(which(behavior == "foraging" |
 #                                          behavior == "flying"))/n(),
 #                commuting = length(which(behavior == "commuting"))/n(),
 #                ODBA = sum(odba, na.rm = TRUE),
@@ -68,16 +68,16 @@ data.frame(behavior = behav_percent %>% names, mean_sd = as.character(behav_perc
 # what time do bats do each behavior?
 ```{r}
 
-df %>% reframe(sleeping = length(which(behavior == "sleeping"))/n(),
-               climbing = length(which(behavior == "climbing"))/n(),
-               grooming = length(which(behavior == "grooming"))/n(),
-               flying = length(which(behavior == "flying"))/n(),
-               foraging = length(which(behavior == "foraging"))/n(),
-               commuting = length(which(behavior == "commuting"))/n(),
-               ODBA = sum(odba, na.rm = TRUE),
-               VeDBA = sum(vedba, na.rm = TRUE),
-               count = n(),
-               .by = c(date, hour, bat)) -> df_hr_sum
+# df %>% reframe(sleeping = length(which(behavior == "sleeping"))/n(),
+#                climbing = length(which(behavior == "climbing"))/n(),
+#                grooming = length(which(behavior == "grooming"))/n(),
+#                flying = length(which(behavior == "flying"))/n(),
+#                foraging = length(which(behavior == "foraging"))/n(),
+#                commuting = length(which(behavior == "commuting"))/n(),
+#                ODBA = sum(odba, na.rm = TRUE),
+#                VeDBA = sum(vedba, na.rm = TRUE),
+#                count = n(),
+#                .by = c(date, hour, bat)) -> df_hr_sum
 
 df_hr_sum <- df_hr_sum[df_hr_sum$count > 1000,]
 ```
@@ -114,10 +114,11 @@ ggplot(df_sum_mlt, aes(x = value, y = scale(VeDBA), col = variable))+
 ```
 
 # summarise daily behavior
-check that covariates are not correlated
+look at the pairwise correlations between each variable and check that covariates are not correlated (typically under 0.5)
 sleeping is correlated with grooming, so we can only include sleeping in the model
+
 ```{r}
-psych::pairs.panels(df_sum)
+pairs.panels(df_sum)
 ```
 
 # model these results
@@ -131,8 +132,16 @@ These results suggest that the more you sleep the lower your VeDBA, which I thin
 
 # save data
 ```{r}
-save(df_sum, file = "../../../../Dropbox/MPI/Dechmann_Lab/Johannes Bernecker/wildbats.robj")
+# save(df_sum, df_hr_sum, file = "../../../../Dropbox/MPI/Dechmann_Lab/Johannes Bernecker/wildbats.robj")
 ```
 
 
+# as sleeping increases, there isn't much impact on the amount of time spent foraging or commuting.
+```{r}
+fit_foraging <- lm(foraging ~ sleeping + VeDBA, data = df_sum)
+summary(fit_foraging)
+
+fit_commuting <- lm(commuting ~ sleeping + VeDBA, data = df_sum)
+summary(fit_commuting)
+```
 
